@@ -1,0 +1,19 @@
+{
+  "name": "orca-secrets-saver",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs"
+  },
+  "dependencies": {
+    "dotenv": "^17.2.3",
+    "ini": "^6.0.0",
+    "json5": "^2.2.3",
+    "smol-toml": "^1.4.2",
+    "yaml": "^2.8.1"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.10"
+  }
+}

@@ -1,0 +1,26 @@
+# dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# plugin build output
+orca-plugin/dist/
+orca-plugin/build/
+
+# asar patch build output (huge, machine-specific)
+install/build/
+release/
+
+# extracted Orca internals used during development (not distributable)
+/index.js
+/args.js
+
+# env — NEVER commit real secrets
+.env
+.env.*
+!.env.example
+
+# misc
+.DS_Store
+*.pem
+npm-debug.log*

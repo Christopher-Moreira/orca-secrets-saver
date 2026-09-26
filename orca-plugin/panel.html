@@ -1,0 +1,384 @@
+<!-- Secrets Saver panel for Orca's sandboxed plugin frame. Master-detail:
+     left = item list (Local: env/config files · Vaulted: user secrets),
+     right = content of the selected item. UI language follows Orca (pt/es/en). -->
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 13px/1.4 ui-sans-serif, system-ui, sans-serif; background: var(--background, #0b0e14); color: var(--foreground, #e6e9f0); }
+  button, input, textarea, select { font: inherit; color: inherit; }
+  .wrap { height: 100vh; min-height: 240px; padding: 10px; display: flex; flex-direction: column; gap: 9px; }
+  .seg { display: flex; flex: 0 0 auto; gap: 3px; padding: 3px; border-radius: 9px; background: var(--muted, #1b2233); }
+  .seg button { flex: 1; border: 0; border-radius: 7px; padding: 7px 10px; background: transparent; color: var(--muted-foreground, #8b93a7); cursor: pointer; font-weight: 650; }
+  .seg button.on { background: var(--card, #141926); color: var(--foreground, #e6e9f0); box-shadow: 0 1px 3px #0004; }
+  .topbar { display: flex; flex: 0 0 auto; gap: 6px; align-items: center; }
+  .topbar select { flex: 1; min-width: 0; padding: 7px 9px; border: 1px solid var(--border, #262f45); border-radius: 8px; background: var(--card, #141926); }
+  input, textarea { width: 100%; min-width: 0; padding: 8px 9px; outline: none; border: 1px solid var(--border, #262f45); border-radius: 8px; background: var(--card, #141926); }
+  input:focus, textarea:focus, select:focus { border-color: var(--ring, #6ea8fe); }
+  .btn { flex: 0 0 auto; padding: 7px 11px; border: 0; border-radius: 8px; background: var(--primary, #6ea8fe); color: var(--primary-foreground, #06122b); cursor: pointer; font-weight: 650; white-space: nowrap; }
+  .btn.ghost, .icon { background: transparent; border: 1px solid var(--border, #262f45); color: var(--muted-foreground, #a0a7b8); }
+  .btn:hover, .icon:hover { filter: brightness(1.12); color: var(--foreground, #e6e9f0); }
+  .btn:disabled { opacity: .5; cursor: default; filter: none; }
+  .icon { padding: 6px 8px; border-radius: 7px; cursor: pointer; }
+  .body { display: flex; flex: 1; min-height: 0; gap: 9px; }
+  .pane { display: flex; flex-direction: column; min-height: 0; border: 1px solid var(--border, #262f45); border-radius: 9px; background: var(--card, #141926); overflow: hidden; }
+  .list-pane { flex: 0 0 42%; min-width: 120px; }
+  .detail-pane { flex: 1; min-width: 0; }
+  .list-search { flex: 0 0 auto; padding: 7px; border-bottom: 1px solid var(--border, #262f45); }
+  .list-search input { padding: 6px 8px; }
+  .list { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; }
+  .row { display: flex; align-items: center; gap: 6px; padding: 9px 10px; border: 0; border-bottom: 1px solid #ffffff08; background: transparent; color: var(--foreground, #e6e9f0); text-align: left; cursor: pointer; width: 100%; }
+  .row:hover { background: var(--muted, #1b2233); }
+  .row.sel { background: color-mix(in srgb, var(--primary, #6ea8fe) 16%, transparent); }
+  .row .r-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+  .row .r-sub { color: var(--muted-foreground, #8b93a7); font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tag { flex: 0 0 auto; font-size: 9px; padding: 1px 6px; border-radius: 999px; border: 1px solid var(--border, #262f45); color: var(--muted-foreground, #8b93a7); }
+  .detail { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .d-head { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; padding: 9px 10px; border-bottom: 1px solid var(--border, #262f45); }
+  .d-title { flex: 1; min-width: 0; font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .d-body { flex: 1; min-height: 0; overflow: auto; padding: 10px; display: flex; flex-direction: column; gap: 9px; }
+  .editor { flex: 1; min-height: 120px; resize: none; border-radius: 7px; background: var(--background, #0b0e14); font: 12px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; tab-size: 2; white-space: pre; overflow: auto; }
+  .d-foot { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-top: 1px solid var(--border, #262f45); }
+  .status { flex: 1; min-width: 0; color: var(--muted-foreground, #8b93a7); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .valuebox { margin: 0; padding: 10px; border: 1px solid var(--border, #262f45); border-radius: 7px; background: var(--background, #0b0e14); white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.55 ui-monospace, Menlo, monospace; }
+  .field-label { color: var(--muted-foreground, #8b93a7); font-size: 11px; margin-bottom: -3px; }
+  .empty, .err { margin: auto; padding: 20px 12px; text-align: center; color: var(--muted-foreground, #8b93a7); }
+  .err { color: var(--destructive, #ff6b6b); }
+  .overlay { position: fixed; inset: 0; z-index: 2; display: flex; align-items: center; justify-content: center; padding: 12px; background: #0009; }
+  .modal { width: 100%; max-width: 360px; display: flex; flex-direction: column; gap: 8px; padding: 14px; border: 1px solid var(--border, #262f45); border-radius: 9px; background: var(--card, #141926); box-shadow: 0 12px 40px #0008; }
+  .modal h3 { margin: 0 0 2px; font-size: 14px; }
+  .modal label { color: var(--muted-foreground, #8b93a7); font-size: 11px; }
+  .modal textarea { min-height: 80px; resize: vertical; font-family: ui-monospace, Menlo, monospace; }
+  .modal-actions { display: flex; justify-content: flex-end; gap: 6px; margin-top: 3px; }
+  .toast { position: fixed; z-index: 3; bottom: 12px; left: 50%; transform: translateX(-50%); padding: 6px 14px; border: 1px solid var(--border, #262f45); border-radius: 999px; background: var(--card, #141926); opacity: 0; transition: opacity .2s; pointer-events: none; }
+  .toast.show { opacity: 1; }
+  [hidden] { display: none !important; }
+</style>
+
+<div class="wrap">
+  <div class="seg" role="tablist" aria-label="Source">
+    <button id="tab-local" class="on" role="tab" onclick="setMode('local')">Local</button>
+    <button id="tab-vault" role="tab" onclick="setMode('vault')">Vaulted</button>
+  </div>
+  <div class="topbar">
+    <select id="project" aria-label="Project" onchange="onProject()"></select>
+    <button id="add" class="btn" onclick="openModal()" hidden></button>
+  </div>
+  <div class="body">
+    <aside class="pane list-pane">
+      <div class="list-search"><input id="search" aria-label="Search" oninput="renderList()" /></div>
+      <div id="list" class="list"></div>
+    </aside>
+    <section class="pane detail-pane">
+      <div id="detail" class="detail"></div>
+    </section>
+  </div>
+</div>
+<div id="toast" class="toast" role="status"></div>
+
+<script>
+'use strict';
+
+/* ---- i18n: language follows Orca (worker returns the resolved locale) ---- */
+var STRINGS = {
+  en: {
+    searchFile: 'Search file…', searchSecret: 'Search secret…', add: '+ Add',
+    selectItem: 'Select an item on the left.', noLocal: 'No .env/config files in this project.',
+    noVault: 'No secrets yet. Click + Add.', notFound: 'Nothing found.', loading: 'Loading…',
+    openProject: 'Open a project in Orca to see local files.', noProjects: 'No project open in Orca.',
+    copy: 'Copy', save: 'Save', saved: 'Saved', unsaved: 'Unsaved changes', saving: 'Saving…', opening: 'Opening',
+    value: 'Value', show: 'Show', hide: 'Hide', edit: 'Edit', del: 'Delete', note: 'Note',
+    newSecret: 'New secret', editSecret: 'Edit secret', name: 'Name', noteOpt: 'Note (optional)', cancel: 'Cancel',
+    nameReq: 'Name is required.', valueReq: 'Value is required.', confirm: 'Confirm', ok: 'Saved',
+    copied: 'Copied', copyFail: 'Could not copy.', fileSaved: 'File saved', tagExample: 'example', tagNote: 'note',
+    phName: 'STRIPE_SECRET_KEY', phValue: 'Secret value', phNote: 'Where/how it is used',
+    delConfirm: 'Delete "{n}" from the vault?',
+  },
+  pt: {
+    searchFile: 'Buscar arquivo…', searchSecret: 'Buscar secret…', add: '+ Adicionar',
+    selectItem: 'Selecione um item à esquerda.', noLocal: 'Nenhum arquivo .env/config neste projeto.',
+    noVault: 'Nenhum secret. Clique em + Adicionar.', notFound: 'Nada encontrado.', loading: 'Carregando…',
+    openProject: 'Abra um projeto no Orca para ver os arquivos locais.', noProjects: 'Nenhum projeto aberto no Orca.',
+    copy: 'Copiar', save: 'Salvar', saved: 'Salvo', unsaved: 'Alterações não salvas', saving: 'Salvando…', opening: 'Abrindo',
+    value: 'Valor', show: 'Ver', hide: 'Ocultar', edit: 'Editar', del: 'Apagar', note: 'Anotação',
+    newSecret: 'Novo secret', editSecret: 'Editar secret', name: 'Nome', noteOpt: 'Anotação (opcional)', cancel: 'Cancelar',
+    nameReq: 'Nome obrigatório.', valueReq: 'Valor obrigatório.', confirm: 'Confirmar', ok: 'Salvo',
+    copied: 'Copiado', copyFail: 'Não foi possível copiar.', fileSaved: 'Arquivo salvo', tagExample: 'exemplo', tagNote: 'nota',
+    phName: 'STRIPE_SECRET_KEY', phValue: 'Valor do secret', phNote: 'Onde/como é usado',
+    delConfirm: 'Apagar "{n}" do cofre?',
+  },
+  es: {
+    searchFile: 'Buscar archivo…', searchSecret: 'Buscar secreto…', add: '+ Añadir',
+    selectItem: 'Selecciona un elemento a la izquierda.', noLocal: 'No hay archivos .env/config en este proyecto.',
+    noVault: 'Aún no hay secretos. Haz clic en + Añadir.', notFound: 'Nada encontrado.', loading: 'Cargando…',
+    openProject: 'Abre un proyecto en Orca para ver los archivos locales.', noProjects: 'Ningún proyecto abierto en Orca.',
+    copy: 'Copiar', save: 'Guardar', saved: 'Guardado', unsaved: 'Cambios sin guardar', saving: 'Guardando…', opening: 'Abriendo',
+    value: 'Valor', show: 'Ver', hide: 'Ocultar', edit: 'Editar', del: 'Eliminar', note: 'Nota',
+    newSecret: 'Nuevo secreto', editSecret: 'Editar secreto', name: 'Nombre', noteOpt: 'Nota (opcional)', cancel: 'Cancelar',
+    nameReq: 'El nombre es obligatorio.', valueReq: 'El valor es obligatorio.', confirm: 'Confirmar', ok: 'Guardado',
+    copied: 'Copiado', copyFail: 'No se pudo copiar.', fileSaved: 'Archivo guardado', tagExample: 'ejemplo', tagNote: 'nota',
+    phName: 'STRIPE_SECRET_KEY', phValue: 'Valor del secreto', phNote: 'Dónde/cómo se usa',
+    delConfirm: '¿Eliminar "{n}" de la bóveda?',
+  },
+};
+var L = STRINGS.en;
+function t(k) { return L[k] !== undefined ? L[k] : STRINGS.en[k] !== undefined ? STRINGS.en[k] : k; }
+function setLocale(loc) { L = STRINGS[loc] || STRINGS.en; document.documentElement.lang = STRINGS[loc] ? loc : 'en'; }
+
+/* ---- worker bridge (via the patched `worker.invoke` panel action) ---- */
+var RESULT_TYPE = 'orca-panel-action-result';
+var pending = new Map();
+var reqSeq = 0;
+window.addEventListener('message', function (ev) {
+  if (ev.source !== window.parent) return;
+  var d = ev.data;
+  if (!d || d.type !== RESULT_TYPE || !d.requestId) return;
+  var p = pending.get(d.requestId);
+  if (!p) return;
+  pending.delete(d.requestId);
+  if (d.ok === false || d.error) { p.reject(new Error(d.error || 'bridge error')); return; }
+  p.resolve(d.result !== undefined ? d.result : (d.data !== undefined ? d.data : d.value));
+});
+function invoke(op, args) {
+  return new Promise(function (resolve, reject) {
+    var requestId = 'r' + (++reqSeq) + '-' + Date.now();
+    pending.set(requestId, { resolve: resolve, reject: reject });
+    setTimeout(function () { if (pending.has(requestId)) { pending.delete(requestId); reject(new Error('timeout')); } }, 15000);
+    window.parent.postMessage({ type: 'orca-panel-action', requestId: requestId, action: 'worker.invoke', params: { commandId: 'secrets.rpc', args: Object.assign({ op: op }, args || {}) } }, '*');
+  });
+}
+async function rpc(op, args) {
+  var out = await invoke(op, args);
+  if (out && out.ok === false) throw new Error(out.error || 'error');
+  return out && out.data !== undefined ? out.data : out;
+}
+
+/* ---- state ---- */
+var mode = 'local';
+var projects = [];
+var projectId = null;
+var localItems = [];
+var vaultItems = [];
+var selected = null;
+var seq = 0;
+
+function $(id) { return document.getElementById(id); }
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+var toastT;
+function showToast(m) { var el = $('toast'); el.textContent = m; el.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(function () { el.classList.remove('show'); }, 1700); }
+
+function applyStatic() {
+  $('add').textContent = t('add');
+  $('search').placeholder = mode === 'vault' ? t('searchSecret') : t('searchFile');
+}
+
+/* ---- boot ---- */
+async function boot() {
+  try {
+    var r = await rpc('projects');
+    setLocale(r.locale);
+    projects = r.projects || [];
+    $('project').innerHTML = projects.map(function (p) {
+      return '<option value="' + esc(p.id) + '">' + esc(p.name) + (p.active ? ' •' : '') + '</option>';
+    }).join('');
+    if (projects.length) { projectId = (projects.find(function (p) { return p.active; }) || projects[0]).id; $('project').value = projectId; }
+    $('project').hidden = mode === 'vault';
+    applyStatic();
+    showEmptyDetail();
+    loadList();
+  } catch (e) { $('list').innerHTML = '<div class="err">' + esc(e.message) + '</div>'; }
+}
+
+function setMode(m) {
+  if (m === mode) return;
+  mode = m;
+  $('tab-local').classList.toggle('on', m === 'local');
+  $('tab-vault').classList.toggle('on', m === 'vault');
+  $('add').hidden = m !== 'vault';
+  $('project').hidden = m === 'vault';   // Vaulted is a single global store — no project dropdown.
+  applyStatic();
+  selected = null;
+  $('search').value = '';
+  showEmptyDetail();
+  loadList();
+}
+function onProject() { projectId = $('project').value; selected = null; $('search').value = ''; showEmptyDetail(); loadList(); }
+
+/* ---- list ---- */
+async function loadList() {
+  var s = ++seq;
+  if (mode === 'local' && !projectId) { $('list').innerHTML = '<div class="empty">' + esc(t('openProject')) + '</div>'; return; }
+  $('list').innerHTML = '<div class="empty">' + esc(t('loading')) + '</div>';
+  try {
+    if (mode === 'local') {
+      var r = await rpc('local.list', { worktreeId: projectId });
+      if (s !== seq) return;
+      localItems = (r.files || []).slice().sort(function (a, b) { return a.file.localeCompare(b.file); });
+    } else {
+      var v = await rpc('vault.list');
+      if (s !== seq) return;
+      vaultItems = (v.entries || []).slice().sort(function (a, b) { return a.name.localeCompare(b.name); });
+    }
+    renderList();
+  } catch (e) { if (s === seq) $('list').innerHTML = '<div class="err">' + esc(e.message) + '</div>'; }
+}
+
+function renderList() {
+  var q = ($('search').value || '').trim().toLowerCase();
+  var root = $('list');
+  var rows;
+  if (mode === 'local') {
+    rows = localItems.filter(function (it) { return it.file.toLowerCase().indexOf(q) >= 0; });
+    if (!rows.length) { root.innerHTML = '<div class="empty">' + esc(localItems.length ? t('notFound') : t('noLocal')) + '</div>'; return; }
+    root.innerHTML = rows.map(function (it) {
+      var base = it.file.split('/').pop();
+      var dir = it.file.slice(0, it.file.length - base.length).replace(/\/$/, '');
+      return '<button class="row' + (selected === it.file ? ' sel' : '') + '" data-file="' + esc(it.file) + '">'
+        + '<div style="min-width:0;flex:1"><div class="r-name">' + esc(base) + '</div>' + (dir ? '<div class="r-sub">' + esc(dir) + '</div>' : '') + '</div>'
+        + (it.example ? '<span class="tag">' + esc(t('tagExample')) + '</span>' : '') + '</button>';
+    }).join('');
+    Array.prototype.forEach.call(root.querySelectorAll('[data-file]'), function (b) { b.onclick = function () { selectLocal(b.getAttribute('data-file')); }; });
+  } else {
+    rows = vaultItems.filter(function (it) { return it.name.toLowerCase().indexOf(q) >= 0; });
+    if (!rows.length) { root.innerHTML = '<div class="empty">' + esc(vaultItems.length ? t('notFound') : t('noVault')) + '</div>'; return; }
+    root.innerHTML = rows.map(function (it) {
+      return '<button class="row' + (selected === it.id ? ' sel' : '') + '" data-id="' + esc(it.id) + '">'
+        + '<div style="min-width:0;flex:1"><div class="r-name">' + esc(it.name) + '</div></div>'
+        + (it.note ? '<span class="tag">' + esc(t('tagNote')) + '</span>' : '') + '</button>';
+    }).join('');
+    Array.prototype.forEach.call(root.querySelectorAll('[data-id]'), function (b) { b.onclick = function () { selectVault(b.getAttribute('data-id')); }; });
+  }
+}
+
+/* ---- detail ---- */
+function showEmptyDetail() { $('detail').innerHTML = '<div class="empty">' + esc(t('selectItem')) + '</div>'; }
+
+async function selectLocal(file) {
+  selected = file; renderList();
+  var s = ++seq;
+  $('detail').innerHTML = '<div class="empty">' + esc(t('opening') + ' ' + file + '…') + '</div>';
+  try {
+    var r = await rpc('local.file.read', { worktreeId: projectId, file: file });
+    if (s !== seq || selected !== file) return;
+    $('detail').innerHTML =
+      '<div class="d-head"><span class="d-title" title="' + esc(file) + '">' + esc(file) + '</span>'
+      + '<button class="icon" id="l-copy">' + esc(t('copy')) + '</button></div>'
+      + '<div class="d-body"><textarea id="l-editor" class="editor" spellcheck="false" autocomplete="off" wrap="off"></textarea></div>'
+      + '<div class="d-foot"><span class="status" id="l-status">' + esc(t('saved')) + '</span><button class="btn" id="l-save" disabled>' + esc(t('save')) + '</button></div>';
+    var ed = $('l-editor');
+    ed.value = r.content;
+    ed.oninput = function () { $('l-status').textContent = t('unsaved'); $('l-save').disabled = false; };
+    $('l-save').onclick = function () { saveLocal(file); };
+    $('l-copy').onclick = function () { copyText(ed.value); };
+  } catch (e) { if (s === seq && selected === file) $('detail').innerHTML = '<div class="err">' + esc(e.message) + '</div>'; }
+}
+async function saveLocal(file) {
+  var ed = $('l-editor'); if (!ed) return;
+  $('l-save').disabled = true; $('l-status').textContent = t('saving');
+  try {
+    await rpc('local.file.write', { worktreeId: projectId, file: file, content: ed.value });
+    if (selected === file) { $('l-status').textContent = t('saved'); showToast(t('fileSaved')); }
+  } catch (e) { if (selected === file) { $('l-status').textContent = e.message; $('l-save').disabled = false; } }
+}
+
+async function selectVault(id) {
+  selected = id; renderList();
+  var it = vaultItems.find(function (x) { return x.id === id; });
+  if (!it) return showEmptyDetail();
+  $('detail').innerHTML =
+    '<div class="d-head"><span class="d-title" title="' + esc(it.name) + '">' + esc(it.name) + '</span>'
+    + '<button class="icon" id="v-edit">' + esc(t('edit')) + '</button>'
+    + '<button class="icon" id="v-del">' + esc(t('del')) + '</button></div>'
+    + '<div class="d-body">'
+    + '<div class="field-label">' + esc(t('value')) + '</div>'
+    + '<pre id="v-value" class="valuebox">••••••••</pre>'
+    + '<div style="display:flex;gap:6px"><button class="btn ghost" id="v-toggle">' + esc(t('show')) + '</button><button class="btn ghost" id="v-copy">' + esc(t('copy')) + '</button></div>'
+    + '<div id="v-note-wrap" hidden><div class="field-label">' + esc(t('note')) + '</div><div id="v-note" class="valuebox"></div></div>'
+    + '</div>';
+  var shown = false, cache = null;
+  async function ensure() { if (cache == null) cache = await rpc('vault.reveal', { id: id }); return cache; }
+  $('v-toggle').onclick = async function () {
+    try {
+      var data = await ensure(); if (selected !== id) return;
+      shown = !shown;
+      $('v-value').textContent = shown ? data.value : '••••••••';
+      $('v-toggle').textContent = shown ? t('hide') : t('show');
+      if (data.note) { $('v-note-wrap').hidden = false; $('v-note').textContent = data.note; }
+    } catch (e) { showToast(e.message); }
+  };
+  $('v-copy').onclick = async function () { try { var d = await ensure(); copyText(d.value); } catch (e) { showToast(e.message); } };
+  $('v-edit').onclick = function () { editVault(id); };
+  $('v-del').onclick = function () { delVault(id); };
+}
+
+/* ---- vault add/edit/delete ---- */
+var editId = null;
+function openModal() { editId = null; showModal(t('newSecret'), '', '', ''); }
+async function editVault(id) {
+  editId = id;
+  var it = vaultItems.find(function (x) { return x.id === id; });
+  try {
+    var s = await rpc('vault.reveal', { id: id });
+    showModal(t('editSecret'), it ? it.name : '', s.value || '', s.note || '');
+  } catch (e) { showToast(e.message); }
+}
+function showModal(title, name, value, note) {
+  var ov = document.createElement('div'); ov.className = 'overlay'; ov.id = 'ov';
+  ov.innerHTML = '<div class="modal" role="dialog" aria-modal="true"><h3>' + esc(title) + '</h3>'
+    + '<label>' + esc(t('name')) + '</label><input id="m-name" value="' + esc(name) + '" placeholder="' + esc(t('phName')) + '" />'
+    + '<label>' + esc(t('value')) + '</label><textarea id="m-value" placeholder="' + esc(t('phValue')) + '">' + esc(value) + '</textarea>'
+    + '<label>' + esc(t('noteOpt')) + '</label><textarea id="m-note" placeholder="' + esc(t('phNote')) + '">' + esc(note || '') + '</textarea>'
+    + '<div class="modal-actions"><button class="btn ghost" data-m="cancel">' + esc(t('cancel')) + '</button><button class="btn" data-m="save">' + esc(t('save')) + '</button></div>'
+    + '<div id="m-err" class="err" style="padding:0;min-height:14px;text-align:left"></div></div>';
+  ov.addEventListener('click', function (e) { if (e.target === ov) closeModal(); });
+  document.body.appendChild(ov);
+  ov.querySelector('[data-m="cancel"]').onclick = closeModal;
+  ov.querySelector('[data-m="save"]').onclick = saveModal;
+  $('m-name').focus();
+}
+function closeModal() { var ov = $('ov'); if (ov) ov.remove(); }
+async function saveModal() {
+  var name = $('m-name').value.trim(), value = $('m-value').value, note = $('m-note').value, err = $('m-err');
+  if (!name) { err.textContent = t('nameReq'); return; }
+  if (!value) { err.textContent = t('valueReq'); return; }
+  try {
+    var res;
+    if (editId) { await rpc('vault.update', { id: editId, name: name, value: value, note: note }); res = editId; }
+    else { res = (await rpc('vault.create', { name: name, value: value, note: note })).entry.id; }
+    closeModal();
+    await loadList();
+    selectVault(res);
+    showToast(t('ok'));
+  } catch (e) { err.textContent = e.message; }
+}
+async function delVault(id) {
+  var it = vaultItems.find(function (x) { return x.id === id; });
+  // window.confirm() is blocked in the sandboxed panel iframe (no allow-modals)
+  // and silently returns false — use our own dialog.
+  if (!(await confirmDialog(t('delConfirm').replace('{n}', it ? it.name : '')))) return;
+  try { await rpc('vault.delete', { id: id }); selected = null; showEmptyDetail(); await loadList(); }
+  catch (e) { showToast(e.message); }
+}
+function confirmDialog(message) {
+  return new Promise(function (resolve) {
+    var ov = document.createElement('div'); ov.className = 'overlay'; ov.id = 'ov-confirm';
+    ov.innerHTML = '<div class="modal" role="dialog" aria-modal="true"><h3>' + esc(t('confirm')) + '</h3><div>' + esc(message) + '</div>'
+      + '<div class="modal-actions"><button class="btn ghost" data-c="no">' + esc(t('cancel')) + '</button><button class="btn" data-c="yes">' + esc(t('del')) + '</button></div></div>';
+    function done(v) { ov.remove(); resolve(v); }
+    ov.addEventListener('click', function (e) { if (e.target === ov) done(false); });
+    document.body.appendChild(ov);
+    ov.querySelector('[data-c="no"]').onclick = function () { done(false); };
+    ov.querySelector('[data-c="yes"]').onclick = function () { done(true); };
+  });
+}
+
+/* ---- clipboard (sandbox-safe) ---- */
+function copyText(text) {
+  var ta = document.createElement('textarea'); ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+  document.body.appendChild(ta); ta.select();
+  try { document.execCommand('copy'); showToast(t('copied')); } catch (e) { showToast(t('copyFail')); }
+  document.body.removeChild(ta);
+}
+
+showEmptyDetail();
+boot();
+</script>

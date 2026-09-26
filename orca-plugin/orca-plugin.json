@@ -1,0 +1,20 @@
+{
+  "manifestVersion": 1,
+  "id": "secrets-saver",
+  "publisher": "local",
+  "name": "Secrets Saver",
+  "version": "0.1.0",
+  "pluginApi": 1,
+  "engines": { "orca": ">=1.4.0" },
+  "description": "Local env/config files and an independent personal encrypted vault. Requires the unofficial Orca app.asar patch included in this repository.",
+  "main": "worker.mjs",
+  "contributes": {
+    "commands": [
+      { "id": "secrets.rpc", "title": "Secrets RPC", "context": "global" }
+    ],
+    "panels": [
+      { "id": "secrets", "title": "Secrets", "icon": "hat-glasses", "entry": "panel.html" }
+    ]
+  },
+  "capabilities": [{ "kind": "secrets" }, { "kind": "storage" }, { "kind": "workspace:read" }]
+}
