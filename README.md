@@ -1,58 +1,59 @@
-# Secrets Saver para Orca
+# Secrets Saver for Orca
 
-Arquivos de configuração dos seus projetos e um cofre pessoal na barra lateral do Orca.
+Your projects' configuration files and a personal vault in Orca's sidebar.
 
-> **Modificação não oficial do Orca.** Este projeto substitui o `app.asar` instalado para habilitar a comunicação entre o painel e o worker. Não é um plugin independente para publicar no catálogo do Orca e não tem vínculo com sua equipe. A instalação cria um backup; atualizações do Orca podem remover o patch ou torná-lo incompatível. O pacote distribui nosso código e scripts, sem incluir binários do Orca.
+> **Unofficial Orca modification.** This project replaces the installed `app.asar` to enable communication between the panel and the worker. It is not a standalone plugin for the Orca catalog and is not affiliated with the Orca team. Installation creates a backup; Orca updates may remove the patch or make it incompatible. The package contains this project's code and scripts, without Orca binaries.
 
-## O que aparece no painel
+## Features
 
-- **Local:** lista arquivos reconhecidos pelo nome, como `.env`, `.env.production` e configurações convencionais, nos projetos abertos no Orca. Permite consultar, copiar e editar o conteúdo. Salvar altera o arquivo real do projeto.
-- **Vaulted:** lista pessoal de secrets, independente dos repositórios, sem seletor de projeto. Permite adicionar, revelar, editar, copiar e apagar. Usa o armazenamento criptografado do Orca e o chaveiro do sistema operacional.
+- **Local:** lists files recognized by name, such as `.env`, `.env.production`, and conventional configuration files, in projects open in Orca. View, copy, and edit their contents. Saving changes updates the actual project file.
+- **Vaulted:** a personal list of secrets, independent of repositories, with no project selector. Add, reveal, edit, copy, and delete entries. Uses Orca's encrypted storage and the operating system's keyring.
 
-O plugin precisa de confiança: seu worker lê arquivos locais e usa APIs internas do Orca. Ele não fornece sincronização em nuvem nem uma senha mestra própria.
+The plugin requires trust: its worker reads local files and uses Orca's internal APIs. It does not provide cloud sync or a separate master password.
 
-## Requisitos
+## Requirements
 
-- **Linux**, com Orca instalado. Integração desenvolvida sobre Orca **1.4.205**; outras versões dependem de compatibilidade dos arquivos internos.
-- **Node.js 22.12 ou superior**, npm, Bash e acesso a `sudo` para substituir o arquivo da instalação.
-- Um chaveiro compatível com Secret Service, como GNOME Keyring, ativo e desbloqueado na sessão gráfica.
-- Internet para instalar as dependências npm. macOS e Windows ainda não têm instalador neste projeto.
+- **Linux**, with Orca installed. Developed against Orca **1.4.205**; compatibility with other versions depends on their internal files.
+- **Node.js 22.12 or later**, npm, Bash, and `sudo` access to replace the installed archive.
+- A Secret Service compatible keyring, such as GNOME Keyring, running and unlocked in your desktop session.
+- Internet access to install npm dependencies. This project does not yet include installers for macOS or Windows.
 
-## Instalar
+## Installation
 
-1. Baixe o [pacote da release v0.1.0](https://github.com/Christopher-Moreira/orca-secrets-saver/releases/download/v0.1.0/secrets-saver-0.1.0.tar.gz) e extraia-o. Também é possível usar **Code → Download ZIP** no [repositório](https://github.com/Christopher-Moreira/orca-secrets-saver) ou clonar:
+1. Download and extract the [v0.1.0 release package](https://github.com/Christopher-Moreira/orca-secrets-saver/releases/download/v0.1.0/secrets-saver-0.1.0.tar.gz). You can also select **Code → Download ZIP** in the [repository](https://github.com/Christopher-Moreira/orca-secrets-saver), or clone it:
 
    ```bash
    git clone https://github.com/Christopher-Moreira/orca-secrets-saver.git
    cd orca-secrets-saver
    ```
-2. Salve seu trabalho e feche o Orca. Abra um terminal externo na pasta extraída.
-3. Execute **sem sudo**:
+
+2. Save your work and close Orca. Open an external terminal in the project directory.
+3. Run **without sudo**:
 
    ```bash
    bash install.sh
    ```
 
-O instalador prepara o plugin e deriva o patch da sua instalação atual. Somente a etapa de aplicação solicita sudo. Ele verifica os arquivos antes de substituir o `app.asar`, preserva um backup e configura o atalho do usuário para iniciar com `--password-store=gnome-libsecret`.
+   The installer builds the plugin and prepares a patch from your current Orca installation. Only the application step requests sudo. It checks the files before replacing `app.asar`, preserves a backup, and configures your desktop shortcut to launch with `--password-store=gnome-libsecret`.
 
-4. Abra o Orca. Em **Settings → Plugins**, habilite plugins em modo de desenvolvimento, adicione o caminho absoluto mostrado pelo instalador (`orca-plugin/dist`) e aprove as permissões do **Secrets Saver**: `secrets`, `storage` e `workspace:read`.
-5. Abra **Secrets** na barra lateral. Mantenha a pasta instalada no mesmo lugar: o Orca carrega o plugin dali.
+4. Open Orca. In **Settings → Plugins**, enable development plugins, add the absolute path shown by the installer (`orca-plugin/dist`), and approve the **Secrets Saver** permissions: `secrets`, `storage`, and `workspace:read`.
+5. Open **Secrets** in the sidebar. Keep the installed directory in place: Orca loads the plugin from it.
 
-Para outra localização do Orca:
+If Orca is installed elsewhere:
 
 ```bash
-ORCA_RES=/caminho/do/orca/resources bash install.sh
+ORCA_RES=/path/to/orca/resources bash install.sh
 ```
 
-Para preparar os arquivos sem modificar a instalação:
+To prepare the files without modifying your installation:
 
 ```bash
 bash install.sh --prepare
 ```
 
-## Idioma
+## Language
 
-Em `orca-plugin/settings.json`, a flag `followOrcaLanguage` vem ativada:
+The `followOrcaLanguage` flag is enabled by default in `orca-plugin/settings.json`:
 
 ```json
 {
@@ -61,48 +62,48 @@ Em `orca-plugin/settings.json`, a flag `followOrcaLanguage` vem ativada:
 }
 ```
 
-O painel segue `settings.uiLanguage` do Orca. Quando o Orca usa `system`, segue o idioma informado pelo ambiente do sistema. Há traduções do painel em português, inglês e espanhol; outros idiomas usam inglês. As abas **Local** e **Vaulted** mantêm seus nomes. Alguns diagnósticos técnicos do worker ainda aparecem em português.
+The panel follows Orca's `settings.uiLanguage`. When Orca uses `system`, it follows the locale reported by the system environment. The panel supports Portuguese, English, and Spanish; other languages fall back to English. The **Local** and **Vaulted** tab names stay the same. Some technical worker diagnostics still appear in Portuguese.
 
-Para fixar um idioma, defina `followOrcaLanguage` como `false` e `language` como `pt`, `en` ou `es`. Depois execute:
+To select a fixed language, set `followOrcaLanguage` to `false` and `language` to `pt`, `en`, or `es`. Then run:
 
 ```bash
 npm run build --prefix orca-plugin
 ```
 
-Recarregue o plugin ou reinicie o Orca. Uma mudança de idioma não exige reaplicar o patch.
+Reload the plugin or restart Orca. Changing the language does not require reapplying the patch.
 
-## Atualizar e desinstalar
+## Updating and uninstalling
 
-Depois de atualizar o Orca, feche-o e execute `bash install.sh` novamente. O instalador usa a versão instalada, sem reutilizar um arquivo antigo como fonte do patch. Se as posições esperadas do código interno mudaram, a preparação aborta e a instalação fica intacta.
+After updating Orca, close it and run `bash install.sh` again. The installer uses the currently installed version as the patch source. If the expected internal code locations have changed, preparation stops and leaves the installation intact.
 
-Para restaurar o `app.asar` original, feche o Orca e execute:
+To restore the original `app.asar`, close Orca and run:
 
 ```bash
 bash install.sh --uninstall
 ```
 
-Em seguida, remova o caminho de desenvolvimento do plugin em Settings → Plugins. O cofre e os arquivos locais são preservados. O atalho com libsecret também permanece, para manter acesso ao mesmo chaveiro. Se existia um atalho personalizado, seu backup fica em `~/.local/share/applications/stably-orca.desktop.secrets-saver-bak`.
+Then remove the plugin's development path in **Settings → Plugins**. Your vault and local files are preserved. The desktop shortcut also keeps its libsecret setting so it can continue accessing the same keyring. If you previously had a custom shortcut, its backup is stored at `~/.local/share/applications/stably-orca.desktop.secrets-saver-bak`.
 
-A restauração recusa um backup se o Orca tiver sido atualizado desde a aplicação. Instalações antigas sem metadados de recuperação precisam ser reaplicadas pelo instalador novo antes de usar esta desinstalação.
+Restoration rejects a backup if Orca has been updated since the patch was applied. Older installations without recovery metadata must have the patch reapplied using the new installer before using this uninstall command.
 
-## Criar o pacote para distribuir
+## Building a distribution package
 
 ```bash
 npm ci --prefix orca-plugin
 node scripts/package.mjs
 ```
 
-Os arquivos `release/secrets-saver-0.1.0.tar.gz` e `.tar.gz.sha256` podem ser anexados a uma release do GitHub. O pacote inclui o plugin compilado, fontes e instalador. Não inclui `app.asar`, backups, perfis, secrets ou `node_modules`. No diretório do download, confira a integridade com:
+The files `release/secrets-saver-0.1.0.tar.gz` and `.tar.gz.sha256` can be attached to a GitHub release. The package includes the compiled plugin, source code, and installer. It excludes `app.asar`, backups, profiles, secrets, and `node_modules`. To verify integrity, run this in the download directory:
 
 ```bash
 sha256sum -c secrets-saver-0.1.0.tar.gz.sha256
 ```
 
-## Problemas comuns
+## Troubleshooting
 
-- **`action: not a panel-callable action`:** o patch está ausente. Feche o Orca e execute o instalador novamente.
-- **Criptografia indisponível:** desbloqueie o chaveiro da sessão gráfica e abra o Orca pelo atalho configurado ou com `stably-orca --password-store=gnome-libsecret`.
-- **Local vazio:** abra um projeto no Orca. A descoberta depende do estado interno dos perfis, dos nomes aceitos e dos limites de varredura do scanner; não exibe qualquer arquivo arbitrário.
-- **Âncora ausente/ambígua:** essa versão do Orca precisa de adaptação do patch. Não aplique manualmente um arquivo preparado para outra versão.
+- **`action: not a panel-callable action`:** the patch is missing. Close Orca and run the installer again.
+- **Encryption unavailable:** unlock your desktop session's keyring and launch Orca using the configured shortcut or `stably-orca --password-store=gnome-libsecret`.
+- **Local is empty:** open a project in Orca. Discovery depends on internal profile state, supported filenames, and scanner limits; it does not display arbitrary files.
+- **Missing or ambiguous patch anchor:** the patch needs to be adapted for this Orca version. Do not manually apply an archive prepared for a different version.
 
-Detalhes da integração estão em [install/README.md](install/README.md).
+See [install/README.md](install/README.md) for integration details (in Portuguese).
