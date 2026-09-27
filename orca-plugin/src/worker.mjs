@@ -19,13 +19,15 @@ const GLOBAL_VAULT = '__global__';
 const MAX_VALUE = 16 * 1024;
 const MAX_NOTE = 4000;
 const MAX_NAME = 200;
+const MAX_FOLDER = 100;
 const LOCAL_PAGE = 200;
 
 const str = (v, max, label, required = false) => {
   if (typeof v !== 'string' || v.length > max || (required && !v.trim())) throw new Error(`${label} inválido.`);
   return v;
 };
-const meta = (e) => ({ id: e.id, name: e.name, note: e.note ? true : false, createdAt: e.createdAt, updatedAt: e.updatedAt });
+// Folder is a flat, optional label (not a tag list): '' means "no folder".
+const meta = (e) => ({ id: e.id, name: e.name, folder: e.folder || '', note: e.note ? true : false, createdAt: e.createdAt, updatedAt: e.updatedAt });
 
 export default async function activate(ctx) {
   const host = ctx.host;
@@ -163,10 +165,11 @@ export default async function activate(ctx) {
         const value =
           params.value != null ? str(params.value, MAX_VALUE, 'Valor', true) : isCreate ? str(undefined, MAX_VALUE, 'Valor', true) : old.value;
         const note = params.note != null ? str(params.note, MAX_NOTE, 'Anotação') : old ? old.note : '';
+        const folder = params.folder != null ? str(params.folder, MAX_FOLDER, 'Pasta').trim() : old ? old.folder || '' : '';
         if (entries.some((e) => e.name === name && e.id !== old?.id)) throw new Error('Já existe um secret com esse nome.');
         if (!old && entries.length >= 500) throw new Error('Limite de 500 secrets no cofre.');
         const now = new Date().toISOString();
-        const entry = { id: old?.id || crypto.randomUUID(), name, value, note, createdAt: old?.createdAt || now, updatedAt: now };
+        const entry = { id: old?.id || crypto.randomUUID(), name, value, note, folder, createdAt: old?.createdAt || now, updatedAt: now };
         await saveVault(GLOBAL_VAULT, old ? entries.map((e) => (e.id === old.id ? entry : e)) : [...entries, entry]);
         return { entry: meta(entry) };
       }

@@ -32,6 +32,11 @@
   .row .r-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
   .row .r-sub { color: var(--muted-foreground, #8b93a7); font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .tag { flex: 0 0 auto; font-size: 9px; padding: 1px 6px; border-radius: 999px; border: 1px solid var(--border, #262f45); color: var(--muted-foreground, #8b93a7); }
+  .folder-head { display: flex; align-items: center; gap: 6px; padding: 7px 10px; cursor: pointer; user-select: none; color: var(--muted-foreground, #8b93a7); font-size: 11px; font-weight: 650; text-transform: uppercase; letter-spacing: .02em; background: var(--muted, #1b2233); }
+  .folder-head:hover { color: var(--foreground, #e6e9f0); }
+  .folder-caret { flex: 0 0 auto; width: 10px; }
+  .folder-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .folder-count { flex: 0 0 auto; opacity: .7; }
   .detail { flex: 1; min-height: 0; display: flex; flex-direction: column; }
   .d-head { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; padding: 9px 10px; border-bottom: 1px solid var(--border, #262f45); }
   .d-title { flex: 1; min-width: 0; font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -92,6 +97,7 @@ var STRINGS = {
     copied: 'Copied', copyFail: 'Could not copy.', fileSaved: 'File saved', tagExample: 'example', tagNote: 'note',
     phName: 'STRIPE_SECRET_KEY', phValue: 'Secret value', phNote: 'Where/how it is used',
     delConfirm: 'Delete "{n}" from the vault?',
+    folderOpt: 'Folder (optional)', phFolder: 'e.g. Stripe, AWS prod…',
   },
   pt: {
     searchFile: 'Buscar arquivo…', searchSecret: 'Buscar secret…', add: '+ Adicionar',
@@ -105,6 +111,7 @@ var STRINGS = {
     copied: 'Copiado', copyFail: 'Não foi possível copiar.', fileSaved: 'Arquivo salvo', tagExample: 'exemplo', tagNote: 'nota',
     phName: 'STRIPE_SECRET_KEY', phValue: 'Valor do secret', phNote: 'Onde/como é usado',
     delConfirm: 'Apagar "{n}" do cofre?',
+    folderOpt: 'Pasta (opcional)', phFolder: 'ex.: Stripe, AWS prod…',
   },
   es: {
     searchFile: 'Buscar archivo…', searchSecret: 'Buscar secreto…', add: '+ Añadir',
@@ -118,6 +125,7 @@ var STRINGS = {
     copied: 'Copiado', copyFail: 'No se pudo copiar.', fileSaved: 'Archivo guardado', tagExample: 'ejemplo', tagNote: 'nota',
     phName: 'STRIPE_SECRET_KEY', phValue: 'Valor del secreto', phNote: 'Dónde/cómo se usa',
     delConfirm: '¿Eliminar "{n}" de la bóveda?',
+    folderOpt: 'Carpeta (opcional)', phFolder: 'ej.: Stripe, AWS prod…',
   },
 };
 var L = STRINGS.en;
@@ -160,6 +168,7 @@ var localItems = [];
 var vaultItems = [];
 var selected = null;
 var seq = 0;
+var collapsedFolders = new Set();
 
 function $(id) { return document.getElementById(id); }
 function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
@@ -240,13 +249,44 @@ function renderList() {
   } else {
     rows = vaultItems.filter(function (it) { return it.name.toLowerCase().indexOf(q) >= 0; });
     if (!rows.length) { root.innerHTML = '<div class="empty">' + esc(vaultItems.length ? t('notFound') : t('noVault')) + '</div>'; return; }
-    root.innerHTML = rows.map(function (it) {
-      return '<button class="row' + (selected === it.id ? ' sel' : '') + '" data-id="' + esc(it.id) + '">'
-        + '<div style="min-width:0;flex:1"><div class="r-name">' + esc(it.name) + '</div></div>'
-        + (it.note ? '<span class="tag">' + esc(t('tagNote')) + '</span>' : '') + '</button>';
-    }).join('');
+    root.innerHTML = renderVaultRows(rows);
     Array.prototype.forEach.call(root.querySelectorAll('[data-id]'), function (b) { b.onclick = function () { selectVault(b.getAttribute('data-id')); }; });
+    Array.prototype.forEach.call(root.querySelectorAll('[data-folder]'), function (h) { h.onclick = function () { toggleFolder(h.getAttribute('data-folder')); }; });
   }
+}
+
+// Vault items group by a single flat `folder` label ('' = no folder, shown
+// unindented at the top); each folder can hold any number of secrets.
+function vaultRowHtml(it) {
+  return '<button class="row' + (selected === it.id ? ' sel' : '') + '" data-id="' + esc(it.id) + '">'
+    + '<div style="min-width:0;flex:1"><div class="r-name">' + esc(it.name) + '</div></div>'
+    + (it.note ? '<span class="tag">' + esc(t('tagNote')) + '</span>' : '') + '</button>';
+}
+function toggleFolder(f) {
+  if (collapsedFolders.has(f)) collapsedFolders.delete(f); else collapsedFolders.add(f);
+  renderList();
+}
+function renderVaultRows(rows) {
+  var groups = new Map();
+  rows.forEach(function (it) {
+    var f = it.folder || '';
+    if (!groups.has(f)) groups.set(f, []);
+    groups.get(f).push(it);
+  });
+  var none = groups.get('') || [];
+  groups.delete('');
+  var folderNames = Array.from(groups.keys()).sort(function (a, b) { return a.localeCompare(b); });
+  var html = none.map(vaultRowHtml).join('');
+  folderNames.forEach(function (f) {
+    var items = groups.get(f);
+    var collapsed = collapsedFolders.has(f);
+    html += '<div class="folder-head" data-folder="' + esc(f) + '">'
+      + '<span class="folder-caret">' + (collapsed ? '▸' : '▾') + '</span>'
+      + '<span class="folder-name">' + esc(f) + '</span>'
+      + '<span class="folder-count">' + items.length + '</span></div>';
+    if (!collapsed) html += items.map(vaultRowHtml).join('');
+  });
+  return html;
 }
 
 /* ---- detail ---- */
@@ -286,6 +326,7 @@ async function selectVault(id) {
   if (!it) return showEmptyDetail();
   $('detail').innerHTML =
     '<div class="d-head"><span class="d-title" title="' + esc(it.name) + '">' + esc(it.name) + '</span>'
+    + (it.folder ? '<span class="tag">' + esc(it.folder) + '</span>' : '')
     + '<button class="icon" id="v-edit">' + esc(t('edit')) + '</button>'
     + '<button class="icon" id="v-del">' + esc(t('del')) + '</button></div>'
     + '<div class="d-body">'
@@ -312,19 +353,22 @@ async function selectVault(id) {
 
 /* ---- vault add/edit/delete ---- */
 var editId = null;
-function openModal() { editId = null; showModal(t('newSecret'), '', '', ''); }
+function openModal() { editId = null; showModal(t('newSecret'), '', '', '', ''); }
 async function editVault(id) {
   editId = id;
   var it = vaultItems.find(function (x) { return x.id === id; });
   try {
     var s = await rpc('vault.reveal', { id: id });
-    showModal(t('editSecret'), it ? it.name : '', s.value || '', s.note || '');
+    showModal(t('editSecret'), it ? it.name : '', s.value || '', s.note || '', it ? it.folder || '' : '');
   } catch (e) { showToast(e.message); }
 }
-function showModal(title, name, value, note) {
+function showModal(title, name, value, note, folder) {
+  var folderOptions = Array.from(new Set(vaultItems.map(function (it) { return it.folder || ''; }).filter(Boolean))).sort();
   var ov = document.createElement('div'); ov.className = 'overlay'; ov.id = 'ov';
   ov.innerHTML = '<div class="modal" role="dialog" aria-modal="true"><h3>' + esc(title) + '</h3>'
     + '<label>' + esc(t('name')) + '</label><input id="m-name" value="' + esc(name) + '" placeholder="' + esc(t('phName')) + '" />'
+    + '<label>' + esc(t('folderOpt')) + '</label><input id="m-folder" list="m-folder-list" value="' + esc(folder || '') + '" placeholder="' + esc(t('phFolder')) + '" />'
+    + '<datalist id="m-folder-list">' + folderOptions.map(function (f) { return '<option value="' + esc(f) + '">'; }).join('') + '</datalist>'
     + '<label>' + esc(t('value')) + '</label><textarea id="m-value" placeholder="' + esc(t('phValue')) + '">' + esc(value) + '</textarea>'
     + '<label>' + esc(t('noteOpt')) + '</label><textarea id="m-note" placeholder="' + esc(t('phNote')) + '">' + esc(note || '') + '</textarea>'
     + '<div class="modal-actions"><button class="btn ghost" data-m="cancel">' + esc(t('cancel')) + '</button><button class="btn" data-m="save">' + esc(t('save')) + '</button></div>'
@@ -337,13 +381,13 @@ function showModal(title, name, value, note) {
 }
 function closeModal() { var ov = $('ov'); if (ov) ov.remove(); }
 async function saveModal() {
-  var name = $('m-name').value.trim(), value = $('m-value').value, note = $('m-note').value, err = $('m-err');
+  var name = $('m-name').value.trim(), value = $('m-value').value, note = $('m-note').value, folder = $('m-folder').value.trim(), err = $('m-err');
   if (!name) { err.textContent = t('nameReq'); return; }
   if (!value) { err.textContent = t('valueReq'); return; }
   try {
     var res;
-    if (editId) { await rpc('vault.update', { id: editId, name: name, value: value, note: note }); res = editId; }
-    else { res = (await rpc('vault.create', { name: name, value: value, note: note })).entry.id; }
+    if (editId) { await rpc('vault.update', { id: editId, name: name, value: value, note: note, folder: folder }); res = editId; }
+    else { res = (await rpc('vault.create', { name: name, value: value, note: note, folder: folder })).entry.id; }
     closeModal();
     await loadList();
     selectVault(res);
