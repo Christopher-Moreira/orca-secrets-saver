@@ -50,24 +50,100 @@ const edits = [
   // members, not unions (fatal: new ZodDiscriminatedUnion ... reading 'length').
   // The happy path (keyring available) validates fine with the originals, so
   // those 4 patches were removed. Only the worker.invoke bridge is needed.
+
+  // Ctrl+Shift+S -> open the Secrets panel, the same way built-in sidebar
+  // panels (Explorer, Search, Source Control...) get a Mod+Shift+<letter>
+  // default. Orca's plugin manifest schema only lets a plugin bind a
+  // keybinding to a fixed list of existing built-in actions (none of which
+  // reveal an arbitrary plugin's own panel), so this has to be a real
+  // keybinding-registry + dispatch-table patch, not a manifest contribution.
+  {
+    // The renderer's global keydown handler doesn't scan the whole
+    // keybindings registry on every keystroke — it only checks the ids in
+    // this fixed built-in-action whitelist (imported as `ug`/`S`, the very
+    // same list the plugin-manifest validator uses for `commands[].action`).
+    // Without this, our registry entry above is visible in Settings and in
+    // the dispatch table, but the keydown loop never calls it — Ctrl+Shift+S
+    // is silently ignored.
+    label: 'renderer plugin-manifest built-in-action list: whitelist plugin.secretsSaver.togglePanel for the global keydown scan',
+    file: 'out/renderer/assets',
+    match: /^plugin-manifest-.*\.js$/,
+    anchor:
+      'S=[`worktree.history.back`,`worktree.history.forward`,`sidebar.left.toggle`,`sidebar.sleepingWorkspaces.toggle`,`floatingWorkspace.maximize`,`tab.rename`,`workspace.rename`,`workspace.openBoard`,`view.tasks`,`sidebar.right.toggle`,`sidebar.explorer.toggle`,`sidebar.search.toggle`,`sidebar.sourceControl.toggle`,`sidebar.checks.toggle`,`sidebar.ports.toggle`]',
+    replacement:
+      'S=[`worktree.history.back`,`worktree.history.forward`,`sidebar.left.toggle`,`sidebar.sleepingWorkspaces.toggle`,`floatingWorkspace.maximize`,`tab.rename`,`workspace.rename`,`workspace.openBoard`,`view.tasks`,`sidebar.right.toggle`,`sidebar.explorer.toggle`,`sidebar.search.toggle`,`sidebar.sourceControl.toggle`,`sidebar.checks.toggle`,`sidebar.ports.toggle`,`plugin.secretsSaver.togglePanel`]',
+  },
+  {
+    label: 'main keybindings registry: register plugin.secretsSaver.togglePanel',
+    file: 'out/main/chunks',
+    match: /^keybindings-.*\.js$/,
+    anchor:
+      '{id:`sidebar.explorer.toggle`,title:`Show Explorer`,group:`Global`,scope:`global`,searchKeywords:[`shortcut`,`sidebar`,`explorer`,`files`],defaultBindings:t([`Mod+Shift+E`])}',
+    replacement:
+      '{id:`sidebar.explorer.toggle`,title:`Show Explorer`,group:`Global`,scope:`global`,searchKeywords:[`shortcut`,`sidebar`,`explorer`,`files`],defaultBindings:t([`Mod+Shift+E`])},{id:`plugin.secretsSaver.togglePanel`,title:`Show Secrets`,group:`Global`,scope:`global`,searchKeywords:[`shortcut`,`sidebar`,`secrets`,`vault`,`env`],defaultBindings:t([`Mod+Shift+S`])}',
+  },
+  {
+    label: 'renderer keybindings registry (Settings list): register plugin.secretsSaver.togglePanel',
+    file: 'out/renderer/assets',
+    match: /^keybindings-.*\.js$/,
+    anchor:
+      '{id:`sidebar.explorer.toggle`,title:`Show Explorer`,group:`Global`,scope:`global`,searchKeywords:[`shortcut`,`sidebar`,`explorer`,`files`],defaultBindings:n([`Mod+Shift+E`])}',
+    replacement:
+      '{id:`sidebar.explorer.toggle`,title:`Show Explorer`,group:`Global`,scope:`global`,searchKeywords:[`shortcut`,`sidebar`,`explorer`,`files`],defaultBindings:n([`Mod+Shift+E`])},{id:`plugin.secretsSaver.togglePanel`,title:`Show Secrets`,group:`Global`,scope:`global`,searchKeywords:[`shortcut`,`sidebar`,`secrets`,`vault`,`env`],defaultBindings:n([`Mod+Shift+S`])}',
+  },
+  {
+    label: 'renderer App dispatch: wire plugin.secretsSaver.togglePanel to the Secrets right-sidebar tab',
+    file: 'out/renderer/assets',
+    match: /^App-.*\.js$/,
+    anchor: '[`sidebar.ports.toggle`,()=>g(`sidebar.ports.toggle`,`ports`)]])}',
+    replacement:
+      '[`sidebar.ports.toggle`,()=>g(`sidebar.ports.toggle`,`ports`)],[`plugin.secretsSaver.togglePanel`,()=>g(`plugin.secretsSaver.togglePanel`,`plugin:local.secrets-saver/secrets`)]])}',
+  },
+  {
+    label: 'renderer App right-sidebar icons: read the Secrets shortcut label',
+    file: 'out/renderer/assets',
+    match: /^App-.*\.js$/,
+    anchor: 'i=Qm(`sidebar.ports.toggle`),a=U(t=>e?t.activeWorktreeId:null)',
+    replacement:
+      'i=Qm(`sidebar.ports.toggle`),y=Qm(`plugin.secretsSaver.togglePanel`),a=U(t=>e?t.activeWorktreeId:null)',
+  },
+  {
+    // The generic plugin-panel icon builder (mR) hardcodes shortcut:'' for
+    // every plugin tab (built-ins compute theirs via Qm/useShortcutLabel).
+    // Override it just for our own tabKey so the sidebar icon's hover
+    // tooltip shows "Ctrl+Shift+S" like Explorer/Search/etc. do.
+    label: 'renderer App right-sidebar icons: show the Secrets shortcut on hover',
+    file: 'out/renderer/assets',
+    match: /^App-.*\.js$/,
+    anchor: 'mR(f,h)],[r,t,h,f,i,n]);return{visibleItems:',
+    replacement:
+      'mR(f,h).map(e=>e.id===`plugin:local.secrets-saver/secrets`?{...e,shortcut:y===`Unassigned`?``:y}:e)],[r,t,h,f,i,n,y]);return{visibleItems:',
+  },
 ];
 
-function findFile(dir, match) {
+function findFiles(dir, match) {
   const abs = path.join(appDir, dir);
   let names;
   try {
     names = fs.readdirSync(abs);
   } catch {
-    return null;
+    return [];
   }
-  const name = names.find((n) => match.test(n));
-  return name ? path.join(abs, name) : null;
+  return names.filter((n) => match.test(n)).map((n) => path.join(abs, n));
 }
 
 let applied = 0;
 let alreadyPatched = 0;
 for (const e of edits) {
-  const file = findFile(e.file, e.match);
+  // A glob can match more than one hashed bundle (e.g. two files both
+  // starting with `App-`); pick the one that actually carries the anchor
+  // (or is already patched), not just the first name alphabetically.
+  const candidates = findFiles(e.file, e.match);
+  const file =
+    candidates.find((f) => {
+      const s = fs.readFileSync(f, 'utf8');
+      return s.includes(e.anchor) || s.includes(e.replacement);
+    }) ?? null;
   if (!file) {
     if (e.optional) {
       console.warn(`~ pulei (arquivo não encontrado, opcional): ${e.label}`);
