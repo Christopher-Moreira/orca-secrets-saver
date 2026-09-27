@@ -1,5 +1,7 @@
 # Secrets Saver for Orca
 
+<img src="media/icon/secrets-saver-icon-merged.svg" alt="Secrets Saver icon" width="96" />
+
 Your projects' configuration files and a personal vault in Orca's sidebar.
 
 > **Unofficial Orca modification.** This project replaces the installed `app.asar` to enable communication between the panel and the worker. It is not a standalone plugin for the Orca catalog and is not affiliated with the Orca team. Installation creates a backup; Orca updates may remove the patch or make it incompatible. The package contains this project's code and scripts, without Orca binaries.
