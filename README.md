@@ -22,7 +22,7 @@ The plugin requires trust: its worker reads local files and uses Orca's internal
 
 ## Installation
 
-1. Download and extract the [v0.1.3 release package](https://github.com/Christopher-Moreira/orca-secrets-saver/releases/download/v0.1.3/secrets-saver-0.1.3.tar.gz). You can also select **Code → Download ZIP** in the [repository](https://github.com/Christopher-Moreira/orca-secrets-saver), or clone it:
+1. Download and extract the [v0.1.4 release package](https://github.com/Christopher-Moreira/orca-secrets-saver/releases/download/v0.1.4/secrets-saver-0.1.4.tar.gz). You can also select **Code → Download ZIP** in the [repository](https://github.com/Christopher-Moreira/orca-secrets-saver), or clone it:
 
    ```bash
    git clone https://github.com/Christopher-Moreira/orca-secrets-saver.git
@@ -95,10 +95,10 @@ npm ci --prefix orca-plugin
 node scripts/package.mjs
 ```
 
-The files `release/secrets-saver-0.1.3.tar.gz` and `.tar.gz.sha256` can be attached to a GitHub release. The package includes the compiled plugin, source code, and installer. It excludes `app.asar`, backups, profiles, secrets, and `node_modules`. To verify integrity, run this in the download directory:
+The files `release/secrets-saver-0.1.4.tar.gz` and `.tar.gz.sha256` can be attached to a GitHub release. The package includes the compiled plugin, source code, and installer. It excludes `app.asar`, backups, profiles, secrets, and `node_modules`. To verify integrity, run this in the download directory:
 
 ```bash
-sha256sum -c secrets-saver-0.1.3.tar.gz.sha256
+sha256sum -c secrets-saver-0.1.4.tar.gz.sha256
 ```
 
 ## Troubleshooting
