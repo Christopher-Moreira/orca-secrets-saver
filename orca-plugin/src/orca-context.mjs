@@ -74,7 +74,7 @@ function resolveLocale(uiLanguage) {
 }
 
 export async function readOrcaContext() {
-  const empty = { worktrees: [], repos: [], activeWorktreeId: null, activeProjectId: null, locale: resolveLocale(null), diagnostic: null };
+  const empty = { worktrees: [], repos: [], activeWorktreeId: null, activeProjectId: null, locale: resolveLocale(null), diagnostic: null, unavailable: true };
   const file = await findDataFile();
   if (!file) return { ...empty, diagnostic: 'Não encontrei o arquivo de estado do Orca nos perfis de configuração.' };
 
@@ -85,6 +85,10 @@ export async function readOrcaContext() {
     const detail = error?.code === 'EACCES' ? 'sem permissão para ler' : 'JSON ausente ou inválido';
     return { ...empty, diagnostic: `Não consegui ler o estado do Orca (${detail}).` };
   }
+  return parseOrcaContext(data);
+}
+
+export function parseOrcaContext(data) {
   const locale = resolveLocale(data.settings && data.settings.uiLanguage);
 
   const repos = Array.isArray(data.repos)
@@ -114,12 +118,22 @@ export async function readOrcaContext() {
     }
   }
 
-  // Fall back to repos as scannable units if worktreeMeta is empty.
-  if (worktrees.length === 0 && repos.length > 0) {
-    for (const r of repos) {
+  // Newly opened repos may not have worktree metadata yet, even when other
+  // projects already do. Include every repo missing from the metadata.
+  for (const r of repos) {
+    if (!worktrees.some((w) => w.projectId === r.id || w.path === r.path)) {
       worktrees.push({ id: r.id, projectId: r.id, name: r.name, path: r.path, active: r.id === activeRepoId });
     }
   }
+
+  // Selecting a repo can update activeRepoId before activeWorktreeId. Resolve
+  // its main directory (or an available worktree) instead of following a stale
+  // worktree from the previously selected project.
+  const activeRepo = repos.find((r) => r.id === activeRepoId);
+  const belongsToActiveRepo = (w) => w.projectId === activeRepoId || w.path === activeRepo?.path;
+  const active = worktrees.find((w) => w.id === activeWorktreeId && (!activeRepo || belongsToActiveRepo(w)))
+    || (activeRepo && (worktrees.find((w) => w.path === activeRepo.path) || worktrees.find(belongsToActiveRepo)));
+  for (const w of worktrees) w.active = w === active;
 
   worktrees.sort((a, b) => (b.active ? 1 : 0) - (a.active ? 1 : 0) || a.name.localeCompare(b.name));
 

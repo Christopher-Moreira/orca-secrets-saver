@@ -109,6 +109,7 @@ export default async function activate(ctx) {
         projects: c.worktrees.map((w) => ({ id: w.id, projectId: w.projectId, name: w.name, path: w.path, active: w.active })),
         locale: c.locale,
         diagnostic: c.diagnostic,
+        unavailable: c.unavailable === true,
       };
     }
 

@@ -145,14 +145,15 @@ window.addEventListener('message', function (ev) {
   var p = pending.get(d.requestId);
   if (!p) return;
   pending.delete(d.requestId);
+  clearTimeout(p.timer);
   if (d.ok === false || d.error) { p.reject(new Error(d.error || 'bridge error')); return; }
   p.resolve(d.result !== undefined ? d.result : (d.data !== undefined ? d.data : d.value));
 });
 function invoke(op, args) {
   return new Promise(function (resolve, reject) {
     var requestId = 'r' + (++reqSeq) + '-' + Date.now();
-    pending.set(requestId, { resolve: resolve, reject: reject });
-    setTimeout(function () { if (pending.has(requestId)) { pending.delete(requestId); reject(new Error('timeout')); } }, 15000);
+    var timer = setTimeout(function () { if (pending.has(requestId)) { pending.delete(requestId); reject(new Error('timeout')); } }, 15000);
+    pending.set(requestId, { resolve: resolve, reject: reject, timer: timer });
     window.parent.postMessage({ type: 'orca-panel-action', requestId: requestId, action: 'worker.invoke', params: { commandId: 'secrets.rpc', args: Object.assign({ op: op }, args || {}) } }, '*');
   });
 }
@@ -171,6 +172,8 @@ var vaultItems = [];
 var selected = null;
 var seq = 0;
 var collapsedFolders = new Set();
+var projectsRequest = null;
+var projectsTimer = null;
 
 function $(id) { return document.getElementById(id); }
 function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
@@ -199,21 +202,72 @@ function applyStatic() {
   $('search').placeholder = mode === 'vault' ? t('searchSecret') : t('searchFile');
 }
 
+/* ---- project discovery: keep the open panel in sync with Orca ---- */
+function refreshProjects() {
+  if (projectsRequest) return projectsRequest;
+  projectsRequest = (async function () {
+    var r = await rpc('projects');
+    setLocale(r.locale);
+    // A transient state-file read failure must not discard an open editor.
+    if (r.unavailable && projects.length) return false;
+    var previous = projects.find(function (p) { return p.id === projectId; });
+    var next = r.projects || [];
+    var previousActive = projects.find(function (p) { return p.active; });
+    var active = next.find(function (p) { return p.active; });
+    // Follow a selection change in Orca's Projects tab. A manual Local
+    // selection remains available until the active workspace changes again.
+    var activeChanged = active && (!previousActive || active.path !== previousActive.path);
+    var current = (activeChanged && active) || next.find(function (p) { return p.id === projectId; })
+      || (previous && next.find(function (p) { return p.path === previous.path; }))
+      || active || next[0];
+    var nextId = current ? current.id : null;
+    var changed = nextId !== projectId;
+    // Avoid rebuilding the native select on every poll while it is in use.
+    if (JSON.stringify(projects) !== JSON.stringify(next)) {
+      $('project').innerHTML = next.map(function (p) {
+        return '<option value="' + esc(p.id) + '">' + esc(p.name) + (p.active ? ' •' : '') + '</option>';
+      }).join('');
+    }
+    projects = next;
+    projectId = nextId;
+    $('project').value = projectId || '';
+    $('project').hidden = mode === 'vault';
+    applyStatic();
+    if (changed && mode === 'local') {
+      // A repo ID can become a worktree ID once Orca writes its metadata.
+      // Preserve the editor when both IDs refer to the same directory.
+      if (!previous || !current || previous.path !== current.path) {
+        selected = null;
+        localItems = [];
+        $('search').value = '';
+        showEmptyDetail();
+        await loadList();
+      }
+    }
+    return changed;
+  })().finally(function () { projectsRequest = null; });
+  return projectsRequest;
+}
+
+function refreshVisibleProjects() {
+  if (document.hidden || mode !== 'local') return;
+  // Background failures are retried without replacing the user's editor.
+  refreshProjects().catch(function () {});
+}
+function startProjectUpdates() {
+  if (projectsTimer === null) projectsTimer = setInterval(refreshVisibleProjects, 3000);
+}
+window.addEventListener('focus', refreshVisibleProjects);
+document.addEventListener('visibilitychange', refreshVisibleProjects);
+window.addEventListener('pagehide', function () { clearInterval(projectsTimer); projectsTimer = null; });
+window.addEventListener('pageshow', function () { startProjectUpdates(); refreshVisibleProjects(); });
+
 /* ---- boot ---- */
 async function boot() {
   try {
-    var r = await rpc('projects');
-    setLocale(r.locale);
-    projects = r.projects || [];
-    $('project').innerHTML = projects.map(function (p) {
-      return '<option value="' + esc(p.id) + '">' + esc(p.name) + (p.active ? ' •' : '') + '</option>';
-    }).join('');
-    if (projects.length) { projectId = (projects.find(function (p) { return p.active; }) || projects[0]).id; $('project').value = projectId; }
-    $('project').hidden = mode === 'vault';
-    applyStatic();
-    showEmptyDetail();
-    loadList();
+    if (!(await refreshProjects())) await loadList();
   } catch (e) { $('list').innerHTML = '<div class="err">' + esc(e.message) + '</div>'; }
+  finally { startProjectUpdates(); }
 }
 
 function setMode(m) {
@@ -228,6 +282,7 @@ function setMode(m) {
   $('search').value = '';
   showEmptyDetail();
   loadList();
+  if (m === 'local') refreshVisibleProjects();
 }
 function onProject() { projectId = $('project').value; selected = null; $('search').value = ''; showEmptyDetail(); loadList(); }
 
@@ -332,11 +387,12 @@ async function selectLocal(file) {
 }
 async function saveLocal(file) {
   var ed = $('l-editor'); if (!ed) return;
+  var s = seq;
   $('l-save').disabled = true; $('l-status').textContent = t('saving');
   try {
     await rpc('local.file.write', { worktreeId: projectId, file: file, content: ed.value });
-    if (selected === file) { $('l-status').textContent = t('saved'); showToast(t('fileSaved')); }
-  } catch (e) { if (selected === file) { $('l-status').textContent = e.message; $('l-save').disabled = false; } }
+    if (s === seq && selected === file) { $('l-status').textContent = t('saved'); showToast(t('fileSaved')); }
+  } catch (e) { if (s === seq && selected === file) { $('l-status').textContent = e.message; $('l-save').disabled = false; } }
 }
 
 async function selectVault(id) {
