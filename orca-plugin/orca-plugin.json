@@ -3,7 +3,7 @@
   "id": "secrets-saver",
   "publisher": "local",
   "name": "Secrets Saver",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "pluginApi": 1,
   "engines": { "orca": ">=1.4.0" },
   "description": "Local env/config files and an independent personal encrypted vault. Requires the unofficial Orca app.asar patch included in this repository.",

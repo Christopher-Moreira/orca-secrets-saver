@@ -10,19 +10,20 @@ Your projects' configuration files and a personal vault in Orca's sidebar.
 
 - **Local:** lists files recognized by name, such as `.env`, `.env.production`, and conventional configuration files, in projects open in Orca. View, copy, and edit their contents. Saving changes updates the actual project file.
 - **Vaulted:** a personal list of secrets, independent of repositories, with no project selector. Add, reveal, edit, copy, and delete entries. Uses Orca's encrypted storage and the operating system's keyring.
+- **Export/Import (Vaulted):** back up or move the whole vault as a portable JSON. Export copies the JSON to the clipboard or writes an `orca-vault-export-*.json` file (saved with `0600` permissions). Import pastes that JSON back, with a per-conflict mode (skip existing, overwrite existing, or replace the whole vault). The exported JSON holds secrets in **plaintext** — keep it somewhere safe and delete it when done.
 
 The plugin requires trust: its worker reads local files and uses Orca's internal APIs. It does not provide cloud sync or a separate master password.
 
 ## Requirements
 
-- **Linux**, with Orca installed. Developed against Orca **1.4.205**; compatibility with other versions depends on their internal files.
+- **Linux**, with Orca installed. Developed against Orca **1.4.220** (earlier 1.4.20x builds also worked); compatibility with other versions depends on their internal files. The patch anchors are version-specific — if preparation stops with a missing/ambiguous anchor, the patch needs adapting for your build.
 - **Node.js 22.12 or later**, npm, Bash, and `sudo` access to replace the installed archive.
 - A Secret Service compatible keyring, such as GNOME Keyring, running and unlocked in your desktop session.
 - Internet access to install npm dependencies. This project does not yet include installers for macOS or Windows.
 
 ## Installation
 
-1. Download and extract the [v0.1.4 release package](https://github.com/Christopher-Moreira/orca-secrets-saver/releases/download/v0.1.4/secrets-saver-0.1.4.tar.gz). You can also select **Code → Download ZIP** in the [repository](https://github.com/Christopher-Moreira/orca-secrets-saver), or clone it:
+1. Download and extract the [v0.1.5 release package](https://github.com/Christopher-Moreira/orca-secrets-saver/releases/download/v0.1.5/secrets-saver-0.1.5.tar.gz). You can also select **Code → Download ZIP** in the [repository](https://github.com/Christopher-Moreira/orca-secrets-saver), or clone it:
 
    ```bash
    git clone https://github.com/Christopher-Moreira/orca-secrets-saver.git
@@ -95,10 +96,10 @@ npm ci --prefix orca-plugin
 node scripts/package.mjs
 ```
 
-The files `release/secrets-saver-0.1.4.tar.gz` and `.tar.gz.sha256` can be attached to a GitHub release. The package includes the compiled plugin, source code, and installer. It excludes `app.asar`, backups, profiles, secrets, and `node_modules`. To verify integrity, run this in the download directory:
+The files `release/secrets-saver-0.1.5.tar.gz` and `.tar.gz.sha256` can be attached to a GitHub release. The package includes the compiled plugin, source code, and installer. It excludes `app.asar`, backups, profiles, secrets, and `node_modules`. To verify integrity, run this in the download directory:
 
 ```bash
-sha256sum -c secrets-saver-0.1.4.tar.gz.sha256
+sha256sum -c secrets-saver-0.1.5.tar.gz.sha256
 ```
 
 ## Troubleshooting
