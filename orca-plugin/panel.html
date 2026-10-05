@@ -69,6 +69,8 @@
   <div class="topbar">
     <select id="project" aria-label="Project" onchange="onProject()"></select>
     <button id="add" class="btn" onclick="openModal()" hidden></button>
+    <button id="export" class="btn ghost" onclick="openExport()" hidden></button>
+    <button id="import" class="btn ghost" onclick="openImport()" hidden></button>
   </div>
   <div class="body">
     <aside class="pane list-pane">
@@ -100,6 +102,13 @@ var STRINGS = {
     phName: 'STRIPE_SECRET_KEY', phValue: 'Secret value', phNote: 'Where/how it is used',
     delConfirm: 'Delete "{n}" from the vault?',
     folderOpt: 'Folder (optional)', phFolder: 'e.g. Stripe, AWS prod…',
+    exp: 'Export', imp: 'Import', exportTitle: 'Export vault', importTitle: 'Import vault',
+    exportWarn: 'Plaintext secrets — keep this file safe.', saveFile: 'Save file', close: 'Close',
+    pasteJson: 'Paste the export JSON here', importMode: 'On name conflict',
+    modeSkip: 'Skip existing', modeOverwrite: 'Overwrite existing', modeReplace: 'Replace entire vault',
+    replaceConfirm: 'Replace the entire vault? Current secrets will be deleted.',
+    importEmpty: 'Paste the export JSON.', nothingToExport: 'Vault is empty — nothing to export.',
+    savedTo: 'Saved to {p}', importDone: 'Imported {i} · Updated {u} · Skipped {s}',
   },
   pt: {
     searchFile: 'Buscar arquivo…', searchSecret: 'Buscar secret…', add: '+ Adicionar',
@@ -114,6 +123,13 @@ var STRINGS = {
     phName: 'STRIPE_SECRET_KEY', phValue: 'Valor do secret', phNote: 'Onde/como é usado',
     delConfirm: 'Apagar "{n}" do cofre?',
     folderOpt: 'Pasta (opcional)', phFolder: 'ex.: Stripe, AWS prod…',
+    exp: 'Exportar', imp: 'Importar', exportTitle: 'Exportar cofre', importTitle: 'Importar cofre',
+    exportWarn: 'Secrets em texto puro — guarde o arquivo com segurança.', saveFile: 'Salvar arquivo', close: 'Fechar',
+    pasteJson: 'Cole aqui o JSON exportado', importMode: 'Em conflito de nome',
+    modeSkip: 'Pular existentes', modeOverwrite: 'Sobrescrever existentes', modeReplace: 'Substituir todo o cofre',
+    replaceConfirm: 'Substituir todo o cofre? Os secrets atuais serão apagados.',
+    importEmpty: 'Cole o JSON exportado.', nothingToExport: 'O cofre está vazio — nada para exportar.',
+    savedTo: 'Salvo em {p}', importDone: 'Importados {i} · Atualizados {u} · Ignorados {s}',
   },
   es: {
     searchFile: 'Buscar archivo…', searchSecret: 'Buscar secreto…', add: '+ Añadir',
@@ -128,6 +144,13 @@ var STRINGS = {
     phName: 'STRIPE_SECRET_KEY', phValue: 'Valor del secreto', phNote: 'Dónde/cómo se usa',
     delConfirm: '¿Eliminar "{n}" de la bóveda?',
     folderOpt: 'Carpeta (opcional)', phFolder: 'ej.: Stripe, AWS prod…',
+    exp: 'Exportar', imp: 'Importar', exportTitle: 'Exportar bóveda', importTitle: 'Importar bóveda',
+    exportWarn: 'Secretos en texto plano — guarda el archivo de forma segura.', saveFile: 'Guardar archivo', close: 'Cerrar',
+    pasteJson: 'Pega aquí el JSON exportado', importMode: 'En conflicto de nombre',
+    modeSkip: 'Omitir existentes', modeOverwrite: 'Sobrescribir existentes', modeReplace: 'Reemplazar toda la bóveda',
+    replaceConfirm: '¿Reemplazar toda la bóveda? Los secretos actuales se eliminarán.',
+    importEmpty: 'Pega el JSON exportado.', nothingToExport: 'La bóveda está vacía — nada para exportar.',
+    savedTo: 'Guardado en {p}', importDone: 'Importados {i} · Actualizados {u} · Omitidos {s}',
   },
 };
 var L = STRINGS.en;
@@ -199,6 +222,9 @@ function showToast(m) { var el = $('toast'); el.textContent = m; el.classList.ad
 
 function applyStatic() {
   $('add').textContent = t('add');
+  $('export').textContent = t('exp');
+  $('import').textContent = t('imp');
+  $('export').hidden = $('import').hidden = mode !== 'vault';
   $('search').placeholder = mode === 'vault' ? t('searchSecret') : t('searchFile');
 }
 
@@ -488,6 +514,63 @@ function confirmDialog(message) {
     ov.querySelector('[data-c="no"]').onclick = function () { done(false); };
     ov.querySelector('[data-c="yes"]').onclick = function () { done(true); };
   });
+}
+
+/* ---- vault export / import (portable JSON — leaves the encrypted store) ---- */
+async function openExport() {
+  try {
+    var r = await rpc('vault.export');
+    if (!r.count) { showToast(t('nothingToExport')); return; }
+    var ov = document.createElement('div'); ov.className = 'overlay'; ov.id = 'ov';
+    ov.innerHTML = '<div class="modal" role="dialog" aria-modal="true"><h3>' + esc(t('exportTitle')) + '</h3>'
+      + '<div style="color:var(--muted-foreground,#8b93a7);font-size:11px">' + esc(t('exportWarn')) + '</div>'
+      + '<textarea id="x-json" readonly spellcheck="false" style="min-height:140px;font-family:ui-monospace,Menlo,monospace"></textarea>'
+      + '<div class="modal-actions"><button class="btn ghost" data-x="close">' + esc(t('close')) + '</button>'
+      + '<button class="btn ghost" data-x="file">' + esc(t('saveFile')) + '</button>'
+      + '<button class="btn" data-x="copy">' + esc(t('copy')) + '</button></div></div>';
+    ov.addEventListener('click', function (e) { if (e.target === ov) closeModal(); });
+    document.body.appendChild(ov);
+    $('x-json').value = r.json;
+    ov.querySelector('[data-x="close"]').onclick = closeModal;
+    ov.querySelector('[data-x="copy"]').onclick = function () { copyText(r.json); };
+    ov.querySelector('[data-x="file"]').onclick = async function () {
+      try { var f = await rpc('vault.exportFile'); showToast(t('savedTo').replace('{p}', f.path)); }
+      catch (e) { showToast(e.message); }
+    };
+    $('x-json').focus(); $('x-json').select();
+  } catch (e) { showToast(e.message); }
+}
+function openImport() {
+  var ov = document.createElement('div'); ov.className = 'overlay'; ov.id = 'ov';
+  ov.innerHTML = '<div class="modal" role="dialog" aria-modal="true"><h3>' + esc(t('importTitle')) + '</h3>'
+    + '<label>' + esc(t('pasteJson')) + '</label>'
+    + '<textarea id="i-json" spellcheck="false" placeholder="' + esc(t('pasteJson')) + '" style="min-height:120px;font-family:ui-monospace,Menlo,monospace"></textarea>'
+    + '<label>' + esc(t('importMode')) + '</label>'
+    + '<select id="i-mode" style="padding:8px 9px;border:1px solid var(--border,#262f45);border-radius:8px;background:var(--card,#141926)">'
+    + '<option value="skip">' + esc(t('modeSkip')) + '</option>'
+    + '<option value="overwrite">' + esc(t('modeOverwrite')) + '</option>'
+    + '<option value="replace">' + esc(t('modeReplace')) + '</option></select>'
+    + '<div class="modal-actions"><button class="btn ghost" data-i="cancel">' + esc(t('cancel')) + '</button>'
+    + '<button class="btn" data-i="import">' + esc(t('imp')) + '</button></div>'
+    + '<div id="i-err" class="err" style="padding:0;min-height:14px;text-align:left"></div></div>';
+  ov.addEventListener('click', function (e) { if (e.target === ov) closeModal(); });
+  document.body.appendChild(ov);
+  ov.querySelector('[data-i="cancel"]').onclick = closeModal;
+  ov.querySelector('[data-i="import"]').onclick = runImport;
+  $('i-json').focus();
+}
+async function runImport() {
+  var json = $('i-json').value.trim(), mode = $('i-mode').value, err = $('i-err');
+  if (!json) { err.textContent = t('importEmpty'); return; }
+  // Destructive mode: confirm before wiping the current vault.
+  if (mode === 'replace' && !(await confirmDialog(t('replaceConfirm')))) return;
+  try {
+    var s = await rpc('vault.import', { json: json, mode: mode });
+    closeModal();
+    selected = null; showEmptyDetail();
+    await loadList();
+    showToast(t('importDone').replace('{i}', s.imported).replace('{u}', s.updated).replace('{s}', s.skipped));
+  } catch (e) { err.textContent = e.message; }
 }
 
 /* ---- clipboard (sandbox-safe) ---- */

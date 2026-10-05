@@ -1,4 +1,7 @@
 import crypto from 'node:crypto';
+import { homedir } from 'node:os';
+import { writeFile } from 'node:fs/promises';
+import path from 'node:path';
 import { scanProject, revealLocal, readLocalFile, writeLocalFile } from './scanner.mjs';
 import { readOrcaContext } from './orca-context.mjs';
 
@@ -28,6 +31,50 @@ const str = (v, max, label, required = false) => {
 };
 // Folder is a flat, optional label (not a tag list): '' means "no folder".
 const meta = (e) => ({ id: e.id, name: e.name, folder: e.folder || '', note: e.note ? true : false, createdAt: e.createdAt, updatedAt: e.updatedAt });
+
+// --- portable export/import (plaintext JSON — leaves the encrypted store) ---
+const EXPORT_TYPE = 'orca-secrets-saver-vault';
+const MAX_IMPORT = 10 * 1024 * 1024; // guard against pasting a huge blob
+
+// Only the portable fields travel; id/timestamps are internal and regenerated.
+const buildExport = (entries) =>
+  JSON.stringify(
+    {
+      type: EXPORT_TYPE,
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      entries: entries.map((e) => ({ name: e.name, value: e.value, note: e.note || '', folder: e.folder || '' })),
+    },
+    null,
+    2,
+  );
+
+// Parse + validate an export document into clean entries; throws on any problem
+// so a bad file never half-writes the vault. Validates each field against the
+// same limits the editor enforces, and rejects duplicate names within the file.
+function parseImport(jsonStr) {
+  let data;
+  try {
+    data = JSON.parse(jsonStr);
+  } catch {
+    throw new Error('JSON inválido.');
+  }
+  if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('JSON inválido.');
+  if (data.type !== EXPORT_TYPE) throw new Error('Este arquivo não é um export do Secrets Saver.');
+  if (data.version !== 1 || !Array.isArray(data.entries)) throw new Error('Versão de export não suportada.');
+  const seen = new Set();
+  return data.entries.map((raw, i) => {
+    const at = `entrada ${i + 1}`;
+    if (!raw || typeof raw !== 'object') throw new Error(`Entrada inválida (${at}).`);
+    const name = str(raw.name, MAX_NAME, `Nome (${at})`, true).trim();
+    const value = str(raw.value, MAX_VALUE, `Valor (${at})`, true);
+    const note = raw.note != null ? str(raw.note, MAX_NOTE, `Anotação (${at})`) : '';
+    const folder = raw.folder != null ? str(raw.folder, MAX_FOLDER, `Pasta (${at})`).trim() : '';
+    if (seen.has(name)) throw new Error(`Nome duplicado no arquivo: "${name}".`);
+    seen.add(name);
+    return { name, value, note, folder };
+  });
+}
 
 export default async function activate(ctx) {
   const host = ctx.host;
@@ -173,6 +220,51 @@ export default async function activate(ctx) {
         const entry = { id: old?.id || crypto.randomUUID(), name, value, note, folder, createdAt: old?.createdAt || now, updatedAt: now };
         await saveVault(GLOBAL_VAULT, old ? entries.map((e) => (e.id === old.id ? entry : e)) : [...entries, entry]);
         return { entry: meta(entry) };
+      }
+      if (op === 'vault.export') {
+        const entries = await loadVault(GLOBAL_VAULT);
+        return { json: buildExport(entries), count: entries.length };
+      }
+      if (op === 'vault.exportFile') {
+        const entries = await loadVault(GLOBAL_VAULT);
+        if (!entries.length) throw new Error('O cofre está vazio. Nada para exportar.');
+        const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const file = path.join(homedir(), `orca-vault-export-${stamp}.json`);
+        // 0o600: plaintext secrets on disk — restrict to the owner.
+        await writeFile(file, buildExport(entries), { encoding: 'utf8', mode: 0o600 });
+        return { path: file, count: entries.length };
+      }
+      if (op === 'vault.import') {
+        const mode = params.mode === 'overwrite' || params.mode === 'replace' ? params.mode : 'skip';
+        const incoming = parseImport(str(params.json, MAX_IMPORT, 'JSON', true));
+        const now = new Date().toISOString();
+        const fresh = (e) => ({ id: crypto.randomUUID(), name: e.name, value: e.value, note: e.note, folder: e.folder, createdAt: now, updatedAt: now });
+        let result;
+        let summary;
+        if (mode === 'replace') {
+          result = incoming.map(fresh);
+          summary = { imported: result.length, updated: 0, skipped: 0 };
+        } else {
+          const byName = new Map((await loadVault(GLOBAL_VAULT)).map((e) => [e.name, e]));
+          let imported = 0, updated = 0, skipped = 0;
+          for (const e of incoming) {
+            const old = byName.get(e.name);
+            if (!old) {
+              byName.set(e.name, fresh(e));
+              imported++;
+            } else if (mode === 'overwrite') {
+              byName.set(e.name, { ...old, value: e.value, note: e.note, folder: e.folder, updatedAt: now });
+              updated++;
+            } else {
+              skipped++;
+            }
+          }
+          result = Array.from(byName.values());
+          summary = { imported, updated, skipped };
+        }
+        if (result.length > 500) throw new Error('A importação excederia o limite de 500 secrets no cofre.');
+        await saveVault(GLOBAL_VAULT, result); // also enforces the ~60 KB cap
+        return summary;
       }
       if (op === 'vault.delete') {
         const entries = await loadVault(GLOBAL_VAULT);
