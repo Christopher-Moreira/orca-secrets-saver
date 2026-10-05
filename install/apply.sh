@@ -23,7 +23,26 @@ if pgrep -x orca-ide >/dev/null 2>&1; then
   exit 1
 fi
 
-node "$HERE/apply-asar.mjs"
+# Pick a Node that actually runs. Under sudo the PATH is often reset to
+# secure_path, which can select a /usr/bin/node that is newer than the system
+# glibc (partial rolling-release update) and fails to load. Prefer a runnable
+# node from PATH, else the newest runnable one under the invoking user's home.
+pick_node() {
+  local c run_home="${SUDO_USER:+/home/$SUDO_USER}"; run_home="${run_home:-$HOME}"
+  for c in "${SS_NODE:-}" "$(command -v node 2>/dev/null || true)"; do
+    [ -n "$c" ] && "$c" -e 'process.exit(0)' >/dev/null 2>&1 && { printf '%s\n' "$c"; return 0; }
+  done
+  for c in "$run_home"/.local/share/mise/installs/node/*/bin/node \
+           "$run_home"/.nvm/versions/node/*/bin/node \
+           /usr/local/bin/node; do
+    [ -x "$c" ] && "$c" -e 'process.exit(0)' >/dev/null 2>&1 && { printf '%s\n' "$c"; return 0; }
+  done
+  return 1
+}
+NODE_BIN="$(pick_node || true)"
+[ -n "$NODE_BIN" ] || { echo "✗ nenhum Node funcional encontrado (o node do PATH pode exigir uma glibc mais nova que a instalada). Defina SS_NODE=/caminho/para/node e tente de novo." >&2; exit 1; }
+echo "• usando node: $NODE_BIN"
+"$NODE_BIN" "$HERE/apply-asar.mjs"
 bash "$HERE/configure-secret-store-launcher.sh"
 echo ""
 echo "Agora abra o Orca e ative o plugin (veja install/README.md):"

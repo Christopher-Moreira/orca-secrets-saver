@@ -27,6 +27,7 @@ try {
     'install/build-patched-asar.sh', 'install/build-asar.mjs', 'install/edit-bundles.mjs',
     'install/apply.sh', 'install/apply-asar.mjs', 'install/revert.sh',
     'install/configure-secret-store-launcher.sh', 'install/close-apply-reopen.sh',
+    'install/do-install.sh',
   ];
   for (const file of files) {
     await fs.mkdir(path.dirname(path.join(dest, file)), { recursive: true });

@@ -32,9 +32,9 @@ const edits = [
     label: 'main executeHostCall guard -> invokeCommand',
     file: 'out/main',
     match: /^index\.js$/,
-    anchor: 'async executeHostCall(e,t,n,r){return gNa(',
+    anchor: 'async executeHostCall(e,t,n,r){return xbo(',
     replacement:
-      'async executeHostCall(e,t,n,r){if(t===`worker.invoke`){try{return{ok:!0,value:await this.invokeCommand(e,n.commandId,n.args)}}catch(e){return{ok:!1,code:`action_failed`,error:e instanceof Error?e.message:String(e)}}}return gNa(',
+      'async executeHostCall(e,t,n,r){if(t===`worker.invoke`){try{return{ok:!0,value:await this.invokeCommand(e,n.commandId,n.args)}}catch(e){return{ok:!1,code:`action_failed`,error:e instanceof Error?e.message:String(e)}}}return xbo(',
   },
   {
     label: 'shared isPluginPanelAction (worker-SDK path)',
@@ -103,9 +103,9 @@ const edits = [
     label: 'renderer App right-sidebar icons: read the Secrets shortcut label',
     file: 'out/renderer/assets',
     match: /^App-.*\.js$/,
-    anchor: 'i=Qm(`sidebar.ports.toggle`),a=U(t=>e?t.activeWorktreeId:null)',
+    anchor: 'i=sg(`sidebar.ports.toggle`),a=H(t=>e?t.activeWorktreeId:null)',
     replacement:
-      'i=Qm(`sidebar.ports.toggle`),y=Qm(`plugin.secretsSaver.togglePanel`),a=U(t=>e?t.activeWorktreeId:null)',
+      'i=sg(`sidebar.ports.toggle`),y=sg(`plugin.secretsSaver.togglePanel`),a=H(t=>e?t.activeWorktreeId:null)',
   },
   {
     // The generic plugin-panel icon builder (mR) hardcodes shortcut:'' for
@@ -115,9 +115,9 @@ const edits = [
     label: 'renderer App right-sidebar icons: show the Secrets shortcut on hover',
     file: 'out/renderer/assets',
     match: /^App-.*\.js$/,
-    anchor: 'mR(f,h)],[r,t,h,f,i,n]);return{visibleItems:',
+    anchor: 'cB(f,h)],[r,t,h,f,i,n]);return{visibleItems:',
     replacement:
-      'mR(f,h).map(e=>e.id===`plugin:local.secrets-saver/secrets`?{...e,shortcut:y===`Unassigned`?``:y}:e)],[r,t,h,f,i,n,y]);return{visibleItems:',
+      'cB(f,h).map(e=>e.id===`plugin:local.secrets-saver/secrets`?{...e,shortcut:y===`Unassigned`?``:y}:e)],[r,t,h,f,i,n,y]);return{visibleItems:',
   },
 ];
 
