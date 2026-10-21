@@ -130,7 +130,12 @@ export function parseOrcaContext(data) {
   // its main directory (or an available worktree) instead of following a stale
   // worktree from the previously selected project.
   const activeRepo = repos.find((r) => r.id === activeRepoId);
-  const belongsToActiveRepo = (w) => w.projectId === activeRepoId || w.path === activeRepo?.path;
+  // A worktree key is `<repoId>::<path>`, so it belongs to the active repo when
+  // its key carries that repo prefix. (projectId is the logical id like
+  // `github:org/repo` and a worktree's path differs from the repo checkout, so
+  // neither of those alone identifies the active worktree.)
+  const belongsToActiveRepo = (w) =>
+    (activeRepoId && w.id.startsWith(`${activeRepoId}::`)) || w.projectId === activeRepoId || w.path === activeRepo?.path;
   const active = worktrees.find((w) => w.id === activeWorktreeId && (!activeRepo || belongsToActiveRepo(w)))
     || (activeRepo && (worktrees.find((w) => w.path === activeRepo.path) || worktrees.find(belongsToActiveRepo)));
   for (const w of worktrees) w.active = w === active;
