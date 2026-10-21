@@ -21,10 +21,16 @@
   .icon { padding: 6px; border-radius: 7px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
   .btn.icon-btn { padding: 6px; display: inline-flex; align-items: center; justify-content: center; }
   .icon svg, .icon-btn svg { display: block; }
-  .body { display: flex; flex: 1; min-height: 0; gap: 9px; }
+  .body { display: flex; flex: 1; min-height: 0; }
   .pane { display: flex; flex-direction: column; min-height: 0; border: 1px solid var(--border, #262f45); border-radius: 9px; background: var(--card, #141926); overflow: hidden; }
-  .list-pane { flex: 0 0 42%; min-width: 120px; }
+  .list-pane { flex: 0 0 var(--list-pane-width, 42%); min-width: 0; }
   .detail-pane { flex: 1; min-width: 0; }
+  .splitter { position: relative; flex: 0 0 12px; min-width: 12px; cursor: col-resize; touch-action: none; outline: none; }
+  .splitter::before { content: ''; position: absolute; top: 5px; bottom: 5px; left: 5px; width: 2px; border-radius: 999px; background: var(--border, #3a455e); transition: background .15s, box-shadow .15s; }
+  .splitter::after { content: ''; position: absolute; top: 50%; left: 4px; width: 4px; height: 30px; transform: translateY(-50%); border-radius: 999px; background: var(--muted-foreground, #8b93a7); opacity: .65; transition: opacity .15s, background .15s, box-shadow .15s; }
+  .splitter:hover::before, .splitter:focus-visible::before, .splitter.dragging::before { background: color-mix(in srgb, var(--primary, #6ea8fe) 55%, var(--border, #3a455e)); }
+  .splitter:hover::after, .splitter:focus-visible::after, .splitter.dragging::after { background: var(--primary, #6ea8fe); box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary, #6ea8fe) 22%, transparent); opacity: 1; }
+  body.split-resizing, body.split-resizing * { cursor: col-resize !important; user-select: none !important; }
   .list-search { flex: 0 0 auto; padding: 7px; border-bottom: 1px solid var(--border, #262f45); }
   .list-search input { padding: 6px 8px; }
   .list { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; }
@@ -73,11 +79,12 @@
     <button id="import" class="btn ghost" onclick="openImport()" hidden></button>
   </div>
   <div class="body">
-    <aside class="pane list-pane">
+    <aside id="list-pane" class="pane list-pane">
       <div class="list-search"><input id="search" aria-label="Search" oninput="renderList()" /></div>
       <div id="list" class="list"></div>
     </aside>
-    <section class="pane detail-pane">
+    <div id="splitter" class="splitter" role="separator" aria-orientation="vertical" aria-controls="list-pane detail-pane" tabindex="0"></div>
+    <section id="detail-pane" class="pane detail-pane">
       <div id="detail" class="detail"></div>
     </section>
   </div>
@@ -109,6 +116,7 @@ var STRINGS = {
     replaceConfirm: 'Replace the entire vault? Current secrets will be deleted.',
     importEmpty: 'Paste the export JSON.', nothingToExport: 'Vault is empty — nothing to export.',
     savedTo: 'Saved to {p}', importDone: 'Imported {i} · Updated {u} · Skipped {s}',
+    resizePanes: 'Resize list and details',
   },
   pt: {
     searchFile: 'Buscar arquivo…', searchSecret: 'Buscar secret…', add: '+ Adicionar',
@@ -130,6 +138,7 @@ var STRINGS = {
     replaceConfirm: 'Substituir todo o cofre? Os secrets atuais serão apagados.',
     importEmpty: 'Cole o JSON exportado.', nothingToExport: 'O cofre está vazio — nada para exportar.',
     savedTo: 'Salvo em {p}', importDone: 'Importados {i} · Atualizados {u} · Ignorados {s}',
+    resizePanes: 'Redimensionar lista e detalhes',
   },
   es: {
     searchFile: 'Buscar archivo…', searchSecret: 'Buscar secreto…', add: '+ Añadir',
@@ -151,6 +160,7 @@ var STRINGS = {
     replaceConfirm: '¿Reemplazar toda la bóveda? Los secretos actuales se eliminarán.',
     importEmpty: 'Pega el JSON exportado.', nothingToExport: 'La bóveda está vacía — nada para exportar.',
     savedTo: 'Guardado en {p}', importDone: 'Importados {i} · Actualizados {u} · Omitidos {s}',
+    resizePanes: 'Redimensionar lista y detalles',
   },
 };
 var L = STRINGS.en;
@@ -226,6 +236,101 @@ function applyStatic() {
   $('import').textContent = t('imp');
   $('export').hidden = $('import').hidden = mode !== 'vault';
   $('search').placeholder = mode === 'vault' ? t('searchSecret') : t('searchFile');
+  $('splitter').title = t('resizePanes');
+  $('splitter').setAttribute('aria-label', t('resizePanes'));
+}
+
+/* ---- resizable master-detail columns ---- */
+var SPLIT_DEFAULT = 42;
+var SPLIT_MIN_PX = 120;
+var SPLIT_STORAGE_KEY = 'secrets-saver:list-width-percent';
+var splitPercent = readSplitPercent();
+var activeSplitPointer = null;
+var splitDragOffset = 0;
+
+function readSplitPercent() {
+  try {
+    var value = Number(localStorage.getItem(SPLIT_STORAGE_KEY));
+    if (Number.isFinite(value) && value > 0 && value < 100) return value;
+  } catch (e) {}
+  return SPLIT_DEFAULT;
+}
+function splitBounds() {
+  var body = document.querySelector('.body');
+  var splitter = $('splitter');
+  var available = Math.max(0, body.clientWidth - splitter.offsetWidth);
+  var min = Math.min(SPLIT_MIN_PX, available / 2);
+  return { body: body, available: available, min: min, max: available - min };
+}
+function setSplitPixels(pixels, persist, preservePreference) {
+  var bounds = splitBounds();
+  if (!bounds.available) return;
+  var width = Math.min(bounds.max, Math.max(bounds.min, pixels));
+  var renderedPercent = width / bounds.available * 100;
+  if (!preservePreference) splitPercent = renderedPercent;
+  bounds.body.style.setProperty('--list-pane-width', width + 'px');
+  var splitter = $('splitter');
+  splitter.setAttribute('aria-valuemin', String(Math.round(bounds.min / bounds.available * 100)));
+  splitter.setAttribute('aria-valuemax', String(Math.round(bounds.max / bounds.available * 100)));
+  splitter.setAttribute('aria-valuenow', String(Math.round(renderedPercent)));
+  splitter.setAttribute('aria-valuetext', Math.round(renderedPercent) + '%');
+  if (persist) {
+    try { localStorage.setItem(SPLIT_STORAGE_KEY, String(splitPercent)); } catch (e) {}
+  }
+}
+function applySplitPercent() {
+  var bounds = splitBounds();
+  if (bounds.available) setSplitPixels(bounds.available * splitPercent / 100, false, true);
+}
+function resizeSplitAt(clientX) {
+  var bounds = splitBounds();
+  setSplitPixels(clientX - bounds.body.getBoundingClientRect().left - splitDragOffset, false);
+}
+function finishSplit(pointerId) {
+  if (activeSplitPointer !== pointerId) return;
+  activeSplitPointer = null;
+  $('splitter').classList.remove('dragging');
+  document.body.classList.remove('split-resizing');
+  try { localStorage.setItem(SPLIT_STORAGE_KEY, String(splitPercent)); } catch (e) {}
+}
+function initSplitter() {
+  var splitter = $('splitter');
+  splitter.onpointerdown = function (e) {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    e.preventDefault();
+    activeSplitPointer = e.pointerId;
+    splitDragOffset = e.clientX - splitter.getBoundingClientRect().left;
+    splitter.setPointerCapture(e.pointerId);
+    splitter.classList.add('dragging');
+    document.body.classList.add('split-resizing');
+    resizeSplitAt(e.clientX);
+  };
+  splitter.onpointermove = function (e) {
+    if (activeSplitPointer === e.pointerId) resizeSplitAt(e.clientX);
+  };
+  splitter.onpointerup = function (e) { finishSplit(e.pointerId); };
+  splitter.onpointercancel = function (e) { finishSplit(e.pointerId); };
+  splitter.onlostpointercapture = function (e) { finishSplit(e.pointerId); };
+  splitter.ondblclick = function () {
+    splitPercent = SPLIT_DEFAULT;
+    setSplitPixels(splitBounds().available * splitPercent / 100, true, true);
+  };
+  splitter.onkeydown = function (e) {
+    var bounds = splitBounds();
+    if (!bounds.available) return;
+    var width = $('list-pane').getBoundingClientRect().width;
+    var step = e.shiftKey ? 40 : 16;
+    if (e.key === 'ArrowLeft') width -= step;
+    else if (e.key === 'ArrowRight') width += step;
+    else if (e.key === 'Home') width = bounds.min;
+    else if (e.key === 'End') width = bounds.max;
+    else return;
+    e.preventDefault();
+    setSplitPixels(width, true);
+  };
+  if (typeof ResizeObserver === 'function') new ResizeObserver(applySplitPercent).observe(document.querySelector('.body'));
+  else window.addEventListener('resize', applySplitPercent);
+  applySplitPercent();
 }
 
 /* ---- project discovery: keep the open panel in sync with Orca ---- */
@@ -582,5 +687,6 @@ function copyText(text) {
 }
 
 showEmptyDetail();
+initSplitter();
 boot();
 </script>
